@@ -2,7 +2,7 @@
 
 A full-stack food delivery web application built using **React.js, Node.js, Express.js, MongoDB, and JWT authentication**. The application provides a complete food ordering experience for customers along with an admin panel for managing food items and orders.
 
-## 🚀 Project Overview
+##  Project Overview
 
 This project is designed to provide a complete food ordering platform where users can:
 
@@ -267,7 +267,7 @@ Protected Routes
 
 ---
 
-## 📌 Main Modules
+##  Main Modules
 
 ### Customer Application
 
