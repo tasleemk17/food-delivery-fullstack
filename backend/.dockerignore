@@ -1,0 +1,16 @@
+# Installed inside the image instead (Windows node_modules would not work on Linux)
+node_modules
+npm-debug.log
+
+# Secrets are passed in at runtime by docker-compose, never baked into the image
+.env
+.env.*
+
+# Not needed to run the server
+tests
+uploads
+.git
+.gitignore
+Dockerfile
+.dockerignore
+README.md
