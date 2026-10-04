@@ -1,26 +1,26 @@
-import axios from "axios";
 import React, { useContext, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "react-toastify";
 import { StoreContext } from "../../Context/StoreContext";
+import api from "../../api";
 import "./Verify.css";
 
 const Verify = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const success = searchParams.get("success");
+  const [searchParams] = useSearchParams();
   const orderId = searchParams.get("orderId");
-  const { url } = useContext(StoreContext);
-
+  const { setCartItems } = useContext(StoreContext);
   const navigate = useNavigate();
 
+  // Only the order id is sent. The server checks the payment with Stripe
+  // itself; the browser can no longer claim "success=true".
   const verifyPayment = async () => {
-    const response = await axios.post(url + "/api/order/verify", {
-      success,
-      orderId,
-    });
+    const response = await api.post("/api/order/verify", { orderId });
     if (response.data.success) {
+      setCartItems({});
       navigate("/myorders");
     } else {
-      navigate("/");
+      toast.error("Payment not completed");
+      navigate("/cart");
     }
   };
 
