@@ -824,15 +824,20 @@ Feel free to explore the repository and review the implementation.
 
 ---
 
-## Security hardening and tests (Phase 0)
+## 🔐 Security Improvements
 
-See [docs/PHASE0_SECURITY.md](docs/PHASE0_SECURITY.md) for the security issues found in the original code and how each one was fixed.
+I improved the security of the application by adding proper JWT authentication and authorization.
 
-Run the backend test suite:
+User identity is taken from the verified token instead of trusting user details sent from the frontend.
 
-```bash
-cd backend
-npm test
-```
+I also added validation for orders, addresses, payment details, and admin actions to prevent invalid or unauthorized requests.
 
-Create an admin account: register normally on the customer site, then run `npm run make-admin your@email.com` inside `backend` and log in to the admin panel.
+Stripe payments are verified on the backend before marking an order as paid.
+
+
+
+### Environment Variables
+
+Create a `.env` file in the backend folder and add the required environment variables.
+
+You can use `.env.example` as a reference for the required configuration.
