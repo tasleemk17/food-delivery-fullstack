@@ -1,10 +1,12 @@
 import { createContext, useEffect, useState } from "react";
-import { food_list, menu_list } from "../assets/assets";
-import axios from "axios";
+import { menu_list } from "../assets/assets";
+import api, { API_URL } from "../api";
+
 export const StoreContext = createContext(null);
 
 const StoreContextProvider = (props) => {
-  const url = "http://localhost:4000";
+  // Used for image URLs (`${url}/images/...`). API calls go through ../api.js.
+  const url = API_URL;
   const [food_list, setFoodList] = useState([]);
   const [cartItems, setCartItems] = useState({});
   const [token, setToken] = useState("");
@@ -12,57 +14,44 @@ const StoreContextProvider = (props) => {
   const deliveryCharge = 50;
 
   const addToCart = async (itemId) => {
-    if (!cartItems[itemId]) {
-      setCartItems((prev) => ({ ...prev, [itemId]: 1 }));
-    } else {
-      setCartItems((prev) => ({ ...prev, [itemId]: prev[itemId] + 1 }));
-    }
+    setCartItems((prev) => ({ ...prev, [itemId]: (prev[itemId] || 0) + 1 }));
     if (token) {
-      await axios.post(
-        url + "/api/cart/add",
-        { itemId },
-        { headers: { token } },
-      );
+      await api.post("/api/cart/add", { itemId });
     }
   };
 
   const removeFromCart = async (itemId) => {
-    setCartItems((prev) => ({ ...prev, [itemId]: prev[itemId] - 1 }));
+    setCartItems((prev) => ({
+      ...prev,
+      [itemId]: Math.max((prev[itemId] || 0) - 1, 0),
+    }));
     if (token) {
-      await axios.post(
-        url + "/api/cart/remove",
-        { itemId },
-        { headers: { token } },
-      );
+      await api.post("/api/cart/remove", { itemId });
     }
   };
 
+  // Display only. The server recalculates the real total when an order is placed.
   const getTotalCartAmount = () => {
     let totalAmount = 0;
     for (const item in cartItems) {
-      try {
-        if (cartItems[item] > 0) {
-          let itemInfo = food_list.find((product) => product._id === item);
-          totalAmount += itemInfo.price * cartItems[item];
-        }
-      } catch (error) {}
+      if (cartItems[item] > 0) {
+        const itemInfo = food_list.find((product) => product._id === item);
+        if (itemInfo) totalAmount += itemInfo.price * cartItems[item];
+      }
     }
     return totalAmount;
   };
 
   const fetchFoodList = async () => {
-    const response = await axios.get(url + "/api/food/list");
-    setFoodList(response.data.data);
+    const response = await api.get("/api/food/list");
+    setFoodList(response.data.data || []);
   };
 
-  const loadCartData = async (token) => {
-    const response = await axios.post(
-      url + "/api/cart/get",
-      {},
-      { headers: token },
-    );
-
-    console.log("Cart API Response:", response.data);
+  // Bug fix: this used to send `{ headers: token }` (the token string as the
+  // whole headers object), so the token never reached the server. The api
+  // client now attaches the token automatically.
+  const loadCartData = async () => {
+    const response = await api.post("/api/cart/get", {});
     setCartItems(response.data.cartData || {});
   };
 
@@ -71,10 +60,18 @@ const StoreContextProvider = (props) => {
       await fetchFoodList();
       if (localStorage.getItem("token")) {
         setToken(localStorage.getItem("token"));
-        await loadCartData({ token: localStorage.getItem("token") });
+        await loadCartData();
       }
     }
     loadData();
+
+    // Fired by api.js when the server says the login has expired.
+    const onLogout = () => {
+      setToken("");
+      setCartItems({});
+    };
+    window.addEventListener("auth:logout", onLogout);
+    return () => window.removeEventListener("auth:logout", onLogout);
   }, []);
 
   const contextValue = {

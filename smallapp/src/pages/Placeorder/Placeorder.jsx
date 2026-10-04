@@ -1,10 +1,10 @@
 import React, { useContext, useEffect, useState } from "react";
-import "./PlaceOrder.css";
+import "./Placeorder.css";
 import { StoreContext } from "../../Context/StoreContext";
 import { assets } from "../../assets/assets";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import axios from "axios";
+import api from "../../api";
 
 const PlaceOrder = () => {
   const [payment, setPayment] = useState("cod");
@@ -20,16 +20,8 @@ const PlaceOrder = () => {
     phone: "",
   });
 
-  const {
-    getTotalCartAmount,
-    token,
-    food_list,
-    cartItems,
-    url,
-    setCartItems,
-    currency,
-    deliveryCharge,
-  } = useContext(StoreContext);
+  const { getTotalCartAmount, token, setCartItems, currency, deliveryCharge } =
+    useContext(StoreContext);
 
   const navigate = useNavigate();
 
@@ -41,39 +33,25 @@ const PlaceOrder = () => {
 
   const placeOrder = async (e) => {
     e.preventDefault();
-    let orderItems = [];
-    food_list.map((item) => {
-      if (cartItems[item._id] > 0) {
-        let itemInfo = item;
-        itemInfo["quantity"] = cartItems[item._id];
-        orderItems.push(itemInfo);
-      }
-    });
-    let orderData = {
-      address: data,
-      items: orderItems,
-      amount: getTotalCartAmount() + deliveryCharge,
-    };
+    // Only the address is sent. The server builds the order from the saved
+    // cart and database prices, so the total cannot be changed here.
+    const orderData = { address: data };
     if (payment === "stripe") {
-      let response = await axios.post(url + "/api/order/place", orderData, {
-        headers: { token },
-      });
+      const response = await api.post("/api/order/place", orderData);
       if (response.data.success) {
         const { session_url } = response.data;
         window.location.replace(session_url);
       } else {
-        toast.error("Something Went Wrong");
+        toast.error(response.data.message || "Something Went Wrong");
       }
     } else {
-      let response = await axios.post(url + "/api/order/placecod", orderData, {
-        headers: { token },
-      });
+      const response = await api.post("/api/order/placecod", orderData);
       if (response.data.success) {
         navigate("/myorders");
         toast.success(response.data.message);
         setCartItems({});
       } else {
-        toast.error("Something Went Wrong");
+        toast.error(response.data.message || "Something Went Wrong");
       }
     }
   };

@@ -172,7 +172,7 @@ The project also includes a separate \*\*Admin Panel\*\* for managing food items
 
 
 
-\- Razorpay Payment Gateway
+\- Stripe Checkout (test mode) with server-side payment verification and webhooks
 
 
 
@@ -336,7 +336,7 @@ npm install
 
 
 
-Create a `.env` file inside the `backend` folder.
+Copy `backend/.env.example` to `backend/.env` and fill in your own values.
 
 
 
@@ -350,9 +350,13 @@ MONGODB\_URI=your\_mongodb\_connection\_string
 
 JWT\_SECRET=your\_jwt\_secret
 
-RAZORPAY\_KEY\_ID=your\_razorpay\_key
+STRIPE\_SECRET\_KEY=sk\_test\_...
 
-RAZORPAY\_KEY\_SECRET=your\_razorpay\_secret
+STRIPE\_WEBHOOK\_SECRET=whsec\_...
+
+FRONTEND\_URL=http://localhost:5173
+
+ADMIN\_URL=http://localhost:5174
 
 ```
 
@@ -646,9 +650,9 @@ MONGODB\_URI=your\_mongodb\_uri
 
 JWT\_SECRET=your\_secret\_key
 
-RAZORPAY\_KEY\_ID=your\_key\_id
+STRIPE\_SECRET\_KEY=sk\_test\_...
 
-RAZORPAY\_KEY\_SECRET=your\_key\_secret
+STRIPE\_WEBHOOK\_SECRET=whsec\_...
 
 ```
 
@@ -804,7 +808,7 @@ MCA | Full Stack Developer
 
 
 
-`React.js` `JavaScript` `Node.js` `Express.js` `MongoDB` `Mongoose` `JWT` `REST API` `Razorpay` `Git` `GitHub`
+`React.js` `JavaScript` `Node.js` `Express.js` `MongoDB` `Mongoose` `JWT` `REST API` `Stripe` `Jest` `Git` `GitHub`
 
 
 
@@ -818,3 +822,17 @@ MCA | Full Stack Developer
 
 Feel free to explore the repository and review the implementation.
 
+---
+
+## Security hardening and tests (Phase 0)
+
+See [docs/PHASE0_SECURITY.md](docs/PHASE0_SECURITY.md) for the security issues found in the original code and how each one was fixed.
+
+Run the backend test suite:
+
+```bash
+cd backend
+npm test
+```
+
+Create an admin account: register normally on the customer site, then run `npm run make-admin your@email.com` inside `backend` and log in to the admin panel.

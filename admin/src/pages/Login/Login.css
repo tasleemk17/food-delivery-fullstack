@@ -1,0 +1,29 @@
+.admin-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #f7f7f7;
+}
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(340px, 90vw);
+  padding: 32px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+.admin-login-form input {
+  padding: 10px;
+  border: 1px solid #c9c9c9;
+  border-radius: 4px;
+}
+.admin-login-form button {
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  background: tomato;
+  color: #fff;
+  cursor: pointer;
+}
