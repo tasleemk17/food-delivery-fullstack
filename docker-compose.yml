@@ -24,6 +24,7 @@ services:
   gateway:
     build: ./gateway
     container_name: food-gateway
+    env_file: ./backend/.env
     environment:
       # Inside Docker, services reach each other by service name, not localhost
       NODE_BACKEND_URL: http://backend:4000
