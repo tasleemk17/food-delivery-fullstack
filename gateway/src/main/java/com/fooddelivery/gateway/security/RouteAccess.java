@@ -13,7 +13,11 @@ import java.util.Set;
  */
 public class RouteAccess {
 
-    public enum Access { PUBLIC, USER, ADMIN, REJECT }
+    /**
+     * PUBLIC: no login. USER: any logged-in user. ADMIN: admins only.
+     * REJECT: malformed path (400). BLOCKED: exists only for other services (404).
+     */
+    public enum Access { PUBLIC, USER, ADMIN, REJECT, BLOCKED }
 
     /** Exact "METHOD path" pairs that anyone may call. */
     private static final Set<String> PUBLIC_ROUTES = Set.of(
@@ -46,6 +50,11 @@ public class RouteAccess {
         }
         if (path.length() > 1 && path.endsWith("/")) {
             path = path.substring(0, path.length() - 1);
+        }
+
+        // Service-to-service routes on the Node backend are never reachable from outside
+        if (path.equals("/internal") || path.startsWith("/internal/")) {
+            return Access.BLOCKED;
         }
 
         if (ADMIN_PATHS.contains(path)) {

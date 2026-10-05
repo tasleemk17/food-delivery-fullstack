@@ -127,6 +127,16 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void internalRoutesAreHiddenEvenFromAdmins() {
+        MockServerWebExchange exchange = run(MockServerHttpRequest
+                .get("/internal/users/64b000000000000000000001/cart")
+                .header("token", JwtVerifierTest.ADMIN_TOKEN).build());
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(forwarded).isNull();
+    }
+
+    @Test
     void pathTraversalIsRejected() {
         // URI.create keeps "/../" exactly as sent, like a hand-crafted request would
         MockServerWebExchange exchange = run(MockServerHttpRequest

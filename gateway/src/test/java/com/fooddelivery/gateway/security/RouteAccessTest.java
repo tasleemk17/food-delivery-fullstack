@@ -1,6 +1,7 @@
 package com.fooddelivery.gateway.security;
 
 import static com.fooddelivery.gateway.security.RouteAccess.Access.ADMIN;
+import static com.fooddelivery.gateway.security.RouteAccess.Access.BLOCKED;
 import static com.fooddelivery.gateway.security.RouteAccess.Access.PUBLIC;
 import static com.fooddelivery.gateway.security.RouteAccess.Access.REJECT;
 import static com.fooddelivery.gateway.security.RouteAccess.Access.USER;
@@ -72,6 +73,23 @@ class RouteAccessTest {
     })
     void suspiciousPathsAreRejected(String method, String path) {
         assertThat(routes.classify(method, path)).isEqualTo(REJECT);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "GET,/internal/users/64b000000000000000000001/cart",
+            "POST,/internal/users/64b000000000000000000001/cart/clear",
+            "GET,/INTERNAL/users/x/cart",
+            "GET,/internal",
+            "GET,/internal/",
+    })
+    void internalRoutesAreBlocked(String method, String path) {
+        assertThat(routes.classify(method, path)).isEqualTo(BLOCKED);
+    }
+
+    @Test
+    void aPathThatOnlyStartsWithTheWordInternalIsNotBlocked() {
+        assertThat(routes.classify("GET", "/internalstuff")).isEqualTo(USER);
     }
 
     @Test

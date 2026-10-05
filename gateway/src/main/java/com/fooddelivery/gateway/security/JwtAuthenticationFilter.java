@@ -20,7 +20,8 @@ import reactor.core.publisher.Mono;
  * 2. Lets public routes through without a login.
  * 3. For everything else, verifies the JWT and answers 401 itself if it is
  *    missing, forged or expired, so the request never reaches the backend.
- * 4. Answers 403 if a non-admin calls an admin route.
+ * 4. Answers 403 if a non-admin calls an admin route, and 404 for the
+ *    internal service-to-service routes.
  * 5. Forwards the request with X-User-Id and X-User-Role set from the token.
  */
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
@@ -52,6 +53,10 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         if (access == RouteAccess.Access.REJECT) {
             return reject(exchange, HttpStatus.BAD_REQUEST, "Invalid path");
+        }
+        if (access == RouteAccess.Access.BLOCKED) {
+            // 404, not 403, so outsiders cannot even tell the route exists
+            return reject(exchange, HttpStatus.NOT_FOUND, "Not found");
         }
         if (access == RouteAccess.Access.PUBLIC) {
             return chain.filter(exchange.mutate().request(withoutIdentity).build());
