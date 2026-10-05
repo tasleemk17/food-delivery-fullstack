@@ -1,0 +1,39 @@
+# Phase 1: Node backend + API gateway in Docker.
+# Start:  docker compose up --build
+# Stop:   docker compose down
+#
+# MongoDB stays on Atlas and the two React apps still run with `npm run dev`.
+# The React apps now call the gateway on port 8080, not Node on 4000.
+
+services:
+  backend:
+    build: ./backend
+    container_name: food-backend
+    # Reads MONGODB_URI, JWT_SECRET, STRIPE_* etc. from backend/.env at runtime
+    env_file: ./backend/.env
+    environment:
+      PORT: "4000"
+    ports:
+      # Still published so the Stripe CLI can deliver webhooks directly.
+      - "4000:4000"
+    volumes:
+      # Keep uploaded food images on the laptop, outside the container
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+
+  gateway:
+    build: ./gateway
+    container_name: food-gateway
+    environment:
+      # Inside Docker, services reach each other by service name, not localhost
+      NODE_BACKEND_URL: http://backend:4000
+      FRONTEND_URL: http://localhost:5173
+      ADMIN_URL: http://localhost:5174
+    ports:
+      - "8090:8080"
+    depends_on:
+      backend:
+        # Wait until the backend's HEALTHCHECK passes before starting
+        condition: service_healthy
+    mem_limit: 512m
+    restart: unless-stopped
