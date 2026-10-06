@@ -3,6 +3,7 @@ import orderModel, { ADMIN_SETTABLE_STATUSES } from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
 import foodModel from "../models/foodModel.js";
 import stripe from "../config/stripe.js";
+import { removeUnavailableItems } from "../services/cartCleanup.js";
 import {
   buildOrderFromCart,
   PricingError,
@@ -41,11 +42,20 @@ const validateAddress = (address) => {
 const priceUserCart = async (userId) => {
   const user = await userModel.findById(userId);
   if (!user) throw new PricingError("User not found", 404);
-  const foodIds = Object.keys(user.cartData || {}).filter((id) =>
-    mongoose.isValidObjectId(id),
-  );
-  const foods = await foodModel.find({ _id: { $in: foodIds } });
-  return buildOrderFromCart(user.cartData, foods);
+
+  // A food deleted from the menu is removed from the cart here. The user is
+  // asked to check the cart instead of being charged for a different order
+  // than the one they saw; the next attempt then goes through.
+  const { cartData, removed } = await removeUnavailableItems(user);
+  if (removed > 0) {
+    throw new PricingError(
+      "Some items in your cart are no longer available and were removed. Please check your cart and try again.",
+      409,
+    );
+  }
+
+  const foods = await foodModel.find({ _id: { $in: Object.keys(cartData) } });
+  return buildOrderFromCart(cartData, foods);
 };
 
 const sendError = (res, error) => {
@@ -88,12 +98,10 @@ const sessionPaysForOrder = (session, order) =>
 const placeOrder = async (req, res) => {
   const address = validateAddress(req.body.address);
   if (!address) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Please fill in the full delivery address",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Please fill in the full delivery address",
+    });
   }
   try {
     // req.body.items and req.body.amount are deliberately ignored.
@@ -146,12 +154,10 @@ const placeOrder = async (req, res) => {
 const placeOrderCod = async (req, res) => {
   const address = validateAddress(req.body.address);
   if (!address) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Please fill in the full delivery address",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Please fill in the full delivery address",
+    });
   }
   try {
     const { items, amount } = await priceUserCart(req.userId);

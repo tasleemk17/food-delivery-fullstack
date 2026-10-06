@@ -1,0 +1,26 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/orders}
+    username: ${DB_USER:orders}
+    password: ${DB_PASSWORD:orders}
+  jpa:
+    # Flyway creates the tables; Hibernate only checks that the entities match them
+    hibernate:
+      ddl-auto: validate
+    # Database work happens only inside the service layer, never while writing the HTTP response
+    open-in-view: false
+  jackson:
+    generator:
+      # 380 instead of 3.8E+2 for BigDecimal amounts
+      write-bigdecimal-as-plain: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -1,24 +1,19 @@
 import mongoose from "mongoose";
 import userModel from "../models/userModel.js";
 import foodModel from "../models/foodModel.js";
+import { removeUnavailableItems } from "../services/cartCleanup.js";
 
 const isValidFood = async (itemId) =>
-  mongoose.isValidObjectId(itemId) &&
-  Boolean(await foodModel.exists({ _id: itemId }));
+  mongoose.isValidObjectId(itemId) && Boolean(await foodModel.exists({ _id: itemId }));
 
 // add to user cart
 const addToCart = async (req, res) => {
   try {
     if (!(await isValidFood(req.body.itemId))) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Food not found" });
+      return res.status(404).json({ success: false, message: "Food not found" });
     }
     const user = await userModel.findById(req.userId);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     const cartData = user.cartData || {};
     cartData[req.body.itemId] = (cartData[req.body.itemId] || 0) + 1;
@@ -34,10 +29,7 @@ const addToCart = async (req, res) => {
 const removeFromCart = async (req, res) => {
   try {
     const user = await userModel.findById(req.userId);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     const cartData = user.cartData || {};
     if (cartData[req.body.itemId] > 0) {
@@ -55,11 +47,11 @@ const removeFromCart = async (req, res) => {
 const getCart = async (req, res) => {
   try {
     const user = await userModel.findById(req.userId);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    res.json({ success: true, cartData: user.cartData || {} });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    // Drop foods that were deleted from the menu, so the cart the user sees
+    // is exactly the cart the server will charge for.
+    const { cartData } = await removeUnavailableItems(user);
+    res.json({ success: true, cartData });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Error" });

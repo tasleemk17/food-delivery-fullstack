@@ -1,15 +1,15 @@
-# Phase 1: Node backend + API gateway in Docker.
-# Start:  docker compose up --build
-# Stop:   docker compose down
+# Phase 1: Node backend, API gateway, order-service and PostgreSQL.
+# Start:  docker compose up -d --build
+# Stop:   docker compose down          (add -v to also delete the PostgreSQL data)
 #
 # MongoDB stays on Atlas and the two React apps still run with `npm run dev`.
-# The React apps now call the gateway on port 8080, not Node on 4000.
+# The React apps call the gateway on port 8090.
 
 services:
   backend:
     build: ./backend
     container_name: food-backend
-    # Reads MONGODB_URI, JWT_SECRET, STRIPE_* etc. from backend/.env at runtime
+    # Reads MONGODB_URI, JWT_SECRET, STRIPE_*, INTERNAL_API_KEY etc. from backend/.env
     env_file: ./backend/.env
     environment:
       PORT: "4000"
@@ -24,16 +24,57 @@ services:
   gateway:
     build: ./gateway
     container_name: food-gateway
+    # Needs JWT_SECRET (same secret the backend signs tokens with)
+    env_file: ./backend/.env
     environment:
       # Inside Docker, services reach each other by service name, not localhost
       NODE_BACKEND_URL: http://backend:4000
       FRONTEND_URL: http://localhost:5173
       ADMIN_URL: http://localhost:5174
     ports:
+      # Laptop port 8090 (8080 is taken by Oracle) -> container port 8080
       - "8090:8080"
     depends_on:
       backend:
-        # Wait until the backend's HEALTHCHECK passes before starting
         condition: service_healthy
     mem_limit: 512m
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: food-postgres
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      # Local development password. Set ORDERS_DB_PASSWORD in a root .env file to change it.
+      POSTGRES_PASSWORD: ${ORDERS_DB_PASSWORD:-orders_local_pw}
+    volumes:
+      # Named volume: order data survives `docker compose down` (but not `down -v`)
+      - orders-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No ports: only order-service talks to the database, over the Docker network
+    restart: unless-stopped
+
+  order-service:
+    build: ./order-service
+    container_name: food-order-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orders
+      DB_USER: orders
+      DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders_local_pw}
+    ports:
+      # TEMPORARY, for testing Step 5 directly. Only reachable from this laptop (127.0.0.1).
+      # Removed in Step 7: order-service trusts X-User-Id, so it must only be reachable via the gateway.
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    restart: unless-stopped
+
+volumes:
+  orders-data:

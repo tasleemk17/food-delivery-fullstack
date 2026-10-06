@@ -4,6 +4,7 @@ import userRouter from "./routes/userRoute.js";
 import foodRouter from "./routes/foodRoute.js";
 import cartRouter from "./routes/cartRoute.js";
 import orderRouter from "./routes/orderRoute.js";
+import internalRouter from "./routes/internalRoute.js";
 import { stripeWebhook } from "./controllers/orderController.js";
 
 // The Express app is built here without connecting to the database or
@@ -32,6 +33,10 @@ app.use("/api/food", foodRouter);
 app.use("/images", express.static("uploads"));
 app.use("/api/cart", cartRouter);
 app.use("/api/order", orderRouter);
+
+// Service-to-service routes (order-service). Blocked at the gateway and
+// protected by INTERNAL_API_KEY.
+app.use("/internal", internalRouter);
 
 app.get("/", (req, res) => {
   res.send("API Working");
