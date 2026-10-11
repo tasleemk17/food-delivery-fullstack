@@ -62,7 +62,10 @@ services:
   order-service:
     build: ./order-service
     container_name: food-order-service
+    # STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, INTERNAL_API_KEY, FRONTEND_URL come from backend/.env
+    env_file: ./backend/.env
     environment:
+      NODE_BASE_URL: http://backend:4000
       DB_URL: jdbc:postgresql://postgres:5432/orders
       DB_USER: orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders_local_pw}

@@ -17,4 +17,19 @@ public enum OrderStatus {
     public String label() {
         return label;
     }
+
+    /** Statuses an admin may set by hand. Payment states are set only by the payment flow. */
+    public boolean isAdminSettable() {
+        return this == FOOD_PROCESSING || this == OUT_FOR_DELIVERY || this == DELIVERED;
+    }
+
+    /** Parses the label the admin panel sends, or null if unknown. */
+    public static OrderStatus fromLabel(String label) {
+        for (OrderStatus s : values()) {
+            if (s.label.equals(label)) {
+                return s;
+            }
+        }
+        return null;
+    }
 }
