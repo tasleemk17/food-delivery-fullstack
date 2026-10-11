@@ -109,3 +109,45 @@ describe("POST /internal/users/:userId/cart/clear", () => {
     expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /internal/users/:userId/cart/remove-unavailable", () => {
+  test("drops foods that are no longer on the menu and reports how many", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: USER_ID,
+      cartData: { [FOOD_A]: 2, [FOOD_B]: 1 },
+    });
+    // Only FOOD_A still exists
+    foodModel.find.mockResolvedValue([{ _id: FOOD_A }]);
+
+    const res = await request(app)
+      .post(`/internal/users/${USER_ID}/cart/remove-unavailable`)
+      .set("X-Internal-Key", KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, removed: 1 });
+    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(USER_ID, {
+      cartData: { [FOOD_A]: 2 },
+    });
+  });
+
+  test("a clean cart is left untouched", async () => {
+    userModel.findById.mockResolvedValue({
+      _id: USER_ID,
+      cartData: { [FOOD_A]: 2 },
+    });
+    const res = await request(app)
+      .post(`/internal/users/${USER_ID}/cart/remove-unavailable`)
+      .set("X-Internal-Key", KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.removed).toBe(0);
+    expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test("needs the key", async () => {
+    const res = await request(app).post(
+      `/internal/users/${USER_ID}/cart/remove-unavailable`,
+    );
+    expect(res.status).toBe(401);
+  });
+});

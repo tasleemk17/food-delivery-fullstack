@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import userModel from "../models/userModel.js";
 import foodModel from "../models/foodModel.js";
+import { removeUnavailableItems } from "../services/cartCleanup.js";
 
 // Endpoints used by order-service. Node still owns users, carts and the food
 // catalogue; order-service asks for what it needs to build an order.
@@ -69,4 +70,22 @@ const clearCart = async (req, res) => {
   }
 };
 
-export { getCartWithPrices, clearCart };
+/**
+ * POST /internal/users/:userId/cart/remove-unavailable
+ * Called by order-service when a food in the cart is no longer on the menu,
+ * so the user is not blocked at checkout by an item they cannot see.
+ */
+const removeUnavailableFromCart = async (req, res) => {
+  try {
+    const user = await findUser(req, res);
+    if (!user) return;
+
+    const { removed } = await removeUnavailableItems(user);
+    res.json({ success: true, removed });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Error" });
+  }
+};
+
+export { getCartWithPrices, clearCart, removeUnavailableFromCart };

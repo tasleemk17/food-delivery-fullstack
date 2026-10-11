@@ -2,6 +2,7 @@ package com.fooddelivery.orders;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /**
  * order-service: stores orders in PostgreSQL and serves the order APIs.
@@ -11,6 +12,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * from the Node backend.
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 public class OrderServiceApplication {
 
     public static void main(String[] args) {
