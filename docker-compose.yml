@@ -29,6 +29,7 @@ services:
     environment:
       # Inside Docker, services reach each other by service name, not localhost
       NODE_BACKEND_URL: http://backend:4000
+      ORDER_SERVICE_URL: http://order-service:8081
       FRONTEND_URL: http://localhost:5173
       ADMIN_URL: http://localhost:5174
     ports:
@@ -37,6 +38,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      order-service:
+        condition: service_started
     mem_limit: 512m
     restart: unless-stopped
 
@@ -69,10 +72,8 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/orders
       DB_USER: orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders_local_pw}
-    ports:
-      # TEMPORARY, for testing Step 5 directly. Only reachable from this laptop (127.0.0.1).
-      # Removed in Step 7: order-service trusts X-User-Id, so it must only be reachable via the gateway.
-      - "127.0.0.1:8081:8081"
+    # No ports: order-service trusts the X-User-Id header, so it must only be
+    # reachable through the gateway, over the Docker network.
     depends_on:
       postgres:
         condition: service_healthy

@@ -8,7 +8,14 @@ spring:
     gateway:
       # Where each request goes. Order matters: the first matching route wins.
       routes:
-        # Everything goes to the Node backend for now.
+        # Orders (place, verify, list, status, Stripe webhook) are handled by the
+        # Java order-service. It has the same paths as the old Node routes.
+        - id: order-service
+          uri: ${ORDER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/order/**
+
+        # Everything else goes to the Node backend.
         - id: node-backend
           uri: ${NODE_BACKEND_URL:http://localhost:4000}
           predicates:
