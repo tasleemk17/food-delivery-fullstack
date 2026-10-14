@@ -180,7 +180,7 @@ Docker Compose starts four containers: the Node.js backend, the gateway, the ord
 |---|---|---|
 | Node.js backend | `food-backend` | http://localhost:4000 |
 | Gateway | `food-gateway` | http://localhost:8090 |
-| order-service | `food-order-service` | http://localhost:8081 (local testing only) |
+| order-service | `food-order-service` | internal only, reached through the gateway at `/api/order/**` |
 | PostgreSQL | `food-postgres` | internal only, no published port |
 
 ### Requirements
@@ -203,10 +203,27 @@ The first build takes a few minutes because Maven downloads the order-service de
 docker compose ps
 ```
 
-All services should show `Up`, and `food-backend` and `food-postgres` should show `healthy`. Health endpoints:
+All services should show `Up`, and `food-backend` and `food-postgres` should show `healthy`. Gateway health endpoint: http://localhost:8090/actuator/health
 
-- http://localhost:8090/actuator/health (gateway)
-- http://localhost:8081/actuator/health (order-service)
+The gateway sends `/api/order/**` to order-service (orders, payments, Stripe webhook) and everything else to the Node backend. order-service has no published port, so it is only reachable through the gateway.
+
+### Stripe webhook (local testing)
+
+Stripe tells the server that a payment succeeded by calling a webhook. On your laptop, the Stripe CLI forwards those calls to the gateway. Keep this running in its own terminal while you test payments:
+
+```bash
+stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:8090/api/order/webhook
+```
+
+1. The command prints a signing secret that starts with `whsec_`.
+2. Put it in `backend/.env` as `STRIPE_WEBHOOK_SECRET`. Do not share it or commit it.
+3. Restart order-service so it reads the new value:
+
+```bash
+docker compose up -d --force-recreate order-service
+```
+
+Without `stripe listen` running, a Stripe order stays unpaid. For a test payment use card `4242 4242 4242 4242` with any future expiry date and any CVC.
 
 ### Logs
 
@@ -241,7 +258,14 @@ ORDERS_DB_PASSWORD=your_password
 - Read endpoints: a user's orders and the admin order list
 - Command endpoints: placing orders and payments
 - It reads cart and food data from the Node backend through an internal API protected by `INTERNAL_API_KEY`
-- It trusts the `X-User-Id` header, so in production it must only be reachable through the gateway. The `127.0.0.1:8081` port in `docker-compose.yml` is temporary and is meant for testing only.
+- It trusts the `X-User-Id` header, so it must only be reachable through the gateway. That is why `docker-compose.yml` does not publish its port.
+- New orders are stored in PostgreSQL. Orders created before this change stay in MongoDB and are not shown in "My Orders" or the admin order list.
+
+To look at the orders in the database:
+
+```bash
+docker exec food-postgres psql -U orders -d orders -c "select id, payment_method, paid, status, amount, created_at from orders order by created_at desc limit 5;"
+```
 
 ### Run the tests
 
