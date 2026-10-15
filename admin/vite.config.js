@@ -4,5 +4,6 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5174 },
+  // strictPort: fail instead of moving to another port, which the backend would reject (CORS)
+  server: { port: 5174, strictPort: true },
 })
