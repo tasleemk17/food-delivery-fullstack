@@ -1,0 +1,14 @@
+# Installed inside the image (Windows node_modules would not work on Linux)
+node_modules
+dist
+npm-debug.log
+
+# The API address is passed as a build argument by docker-compose instead
+.env
+.env.*
+
+.git
+.vscode
+README.md
+Dockerfile
+.dockerignore

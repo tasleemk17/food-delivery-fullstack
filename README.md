@@ -183,16 +183,22 @@ Add `stripe` to also start the Stripe webhook forwarder: `start-dev.bat stripe`.
 
 ---
 
-## 🐳 Run the Backend Services with Docker
+## 🐳 Run Everything with Docker
 
-Docker Compose starts four containers: the Node.js backend, the gateway, the order-service and PostgreSQL.
+Docker Compose starts six containers: the Node.js backend, the gateway, the order-service, PostgreSQL and the two React apps (built with Vite and served by nginx).
 
 | Service | Container | URL |
 |---|---|---|
+| Customer app | `food-smallapp` | http://localhost:5173 |
+| Admin panel | `food-admin` | http://localhost:5174 |
 | Node.js backend | `food-backend` | http://localhost:4000 |
 | Gateway | `food-gateway` | http://localhost:8090 |
 | order-service | `food-order-service` | internal only, reached through the gateway at `/api/order/**` |
 | PostgreSQL | `food-postgres` | internal only, no published port |
+
+The React apps call the gateway at `http://localhost:8090`. This address is set at build time with the `VITE_API_URL` build argument in `docker-compose.yml`, because the browser, not the container, makes the requests. Ports 5173 and 5174 are fixed because the backend and gateway only allow those two origins (CORS).
+
+If you change the React code, run `docker compose up -d --build` again to rebuild the apps. For hot reload while editing, use `start-dev.bat` or run `npm run dev` yourself; stop the React containers first with `docker compose stop smallapp admin`, because they use the same ports.
 
 ### Requirements
 
@@ -338,6 +344,8 @@ npm start
 ---
 
 ## 💻 Frontend Setup
+
+The React apps start automatically with `docker compose up -d --build`. This section is for running them with hot reload during development (stop the containers first: `docker compose stop smallapp admin`).
 
 Open a new terminal and navigate to:
 
