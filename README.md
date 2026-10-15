@@ -150,6 +150,7 @@ food-delivery-fullstack/
 │   └── vite.config.js
 │
 ├── docker-compose.yml
+├── start-dev.bat            # Windows: start everything for local development
 ├── .gitignore
 └── README.md
 ```
@@ -169,6 +170,16 @@ Navigate to the project:
 ```bash
 cd food-delivery-fullstack
 ```
+
+### Quick start on Windows
+
+After the `backend/.env` file exists (see [Environment Variables](#-environment-variables)), one command starts the Docker services, the customer app and the admin panel:
+
+```bash
+start-dev.bat
+```
+
+Add `stripe` to also start the Stripe webhook forwarder: `start-dev.bat stripe`. The sections below explain each part step by step.
 
 ---
 
