@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from "react";
 import "./Placeorder.css";
-import { StoreContext } from "../../Context/StoreContext";
+import { StoreContext } from "../../context/StoreContext";
 import { assets } from "../../assets/assets";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";

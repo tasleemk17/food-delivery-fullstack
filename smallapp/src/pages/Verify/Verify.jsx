@@ -1,7 +1,7 @@
 import React, { useContext, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
-import { StoreContext } from "../../Context/StoreContext";
+import { StoreContext } from "../../context/StoreContext";
 import api from "../../api";
 import "./Verify.css";
 
