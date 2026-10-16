@@ -1,9 +1,13 @@
-# Phase 1: Node backend, API gateway, order-service and PostgreSQL.
+# Node backend, API gateway, order-service, PostgreSQL and the two React apps.
 # Start:  docker compose up -d --build
 # Stop:   docker compose down          (add -v to also delete the PostgreSQL data)
 #
-# MongoDB stays on Atlas and the two React apps still run with `npm run dev`.
-# The React apps call the gateway on port 8090.
+# MongoDB stays on Atlas.
+# Customer app: http://localhost:5173   Admin panel: http://localhost:5174
+# Both call the gateway on port 8090.
+#
+# For hot reload while editing the React code, stop the containers first
+# (`docker compose stop smallapp admin`) and use `npm run dev` in each folder.
 
 services:
   backend:
@@ -78,6 +82,35 @@ services:
       postgres:
         condition: service_healthy
     mem_limit: 512m
+    restart: unless-stopped
+
+  smallapp:
+    build:
+      context: ./smallapp
+      args:
+        # Address the BROWSER uses to reach the gateway (baked into the JavaScript)
+        VITE_API_URL: http://localhost:8090
+    container_name: food-smallapp
+    ports:
+      # Port 5173 is the one the backend and gateway allow (CORS) for the customer app
+      - "5173:8080"
+    depends_on:
+      - gateway
+    mem_limit: 128m
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        VITE_API_URL: http://localhost:8090
+    container_name: food-admin
+    ports:
+      # Port 5174 is the one the backend and gateway allow (CORS) for the admin panel
+      - "5174:8080"
+    depends_on:
+      - gateway
+    mem_limit: 128m
     restart: unless-stopped
 
 volumes:
