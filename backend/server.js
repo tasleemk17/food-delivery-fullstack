@@ -4,7 +4,7 @@ import { connectDB } from "./config/db.js";
 
 // Fail fast if a required secret is missing, instead of crashing later
 // in the middle of a request.
-const required = ["MONGODB_URI", "JWT_SECRET", "STRIPE_SECRET_KEY"];
+const required = ["MONGODB_URI", "JWT_SECRET"];
 const missing = required.filter((key) => !process.env[key]);
 if (missing.length) {
   console.error(`Missing environment variables: ${missing.join(", ")}`);

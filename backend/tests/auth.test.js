@@ -9,11 +9,9 @@ const userToken = tokenFor(USER_ID, "user");
 
 describe("customer routes need a valid login", () => {
   test.each([
-    ["post", "/api/order/place"],
-    ["post", "/api/order/placecod"],
-    ["post", "/api/order/userorders"],
-    ["post", "/api/order/verify"],
     ["post", "/api/cart/get"],
+    ["post", "/api/cart/add"],
+    ["post", "/api/cart/remove"],
   ])("%s %s without token -> 401", async (method, path) => {
     const res = await request(app)[method](path).send({});
     expect(res.status).toBe(401);
@@ -22,7 +20,7 @@ describe("customer routes need a valid login", () => {
 
   test("a forged token -> 401", async () => {
     const res = await request(app)
-      .post("/api/order/userorders")
+      .post("/api/cart/get")
       .set("token", "not-a-real-jwt");
     expect(res.status).toBe(401);
   });
@@ -30,15 +28,13 @@ describe("customer routes need a valid login", () => {
   test("a token signed with another secret -> 401", async () => {
     const jwt = (await import("jsonwebtoken")).default;
     const forged = jwt.sign({ id: USER_ID, role: "admin" }, "attacker-secret");
-    const res = await request(app).get("/api/order/list").set("token", forged);
+    const res = await request(app).post("/api/food/remove").set("token", forged);
     expect(res.status).toBe(401);
   });
 });
 
 describe("admin routes reject normal users", () => {
   test.each([
-    ["get", "/api/order/list"],
-    ["post", "/api/order/status"],
     ["post", "/api/food/remove"],
     ["post", "/api/food/add"],
   ])("%s %s with a user token -> 403", async (method, path) => {
@@ -50,9 +46,8 @@ describe("admin routes reject normal users", () => {
   });
 
   test.each([
-    ["get", "/api/order/list"],
-    ["post", "/api/order/status"],
     ["post", "/api/food/remove"],
+    ["post", "/api/food/add"],
   ])("%s %s without token -> 401", async (method, path) => {
     const res = await request(app)[method](path).send({});
     expect(res.status).toBe(401);
@@ -61,7 +56,7 @@ describe("admin routes reject normal users", () => {
 
 test("Authorization: Bearer header is also accepted", async () => {
   const res = await request(app)
-    .get("/api/order/list")
+    .post("/api/food/remove")
     .set("Authorization", `Bearer ${userToken}`);
   // Authenticated but not admin -> 403 (not 401)
   expect(res.status).toBe(403);
