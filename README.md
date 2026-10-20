@@ -532,6 +532,10 @@ Stripe payments are verified on the backend before marking an order as paid.
 
 ![Cart with totals and delivery fee](docs/screenshots/cart.jpg)
 
+**My Orders** (orders are stored by order-service in PostgreSQL)
+
+![My Orders page with order status](docs/screenshots/my-orders.jpg)
+
 ### Admin Panel
 
 _Admin panel screenshots (add food, food list, orders) are coming soon._
