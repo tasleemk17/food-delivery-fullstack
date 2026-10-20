@@ -57,6 +57,13 @@ public class RouteAccess {
             return Access.BLOCKED;
         }
 
+        // Stock management is admin only. The one exception is the read-only
+        // "is it in stock" list that the public menu needs.
+        if (path.equals("/api/inventory") || path.startsWith("/api/inventory/")) {
+            boolean readOnly = "GET".equals(httpMethod) || "HEAD".equals(httpMethod);
+            return readOnly && path.equals("/api/inventory/availability") ? Access.PUBLIC : Access.ADMIN;
+        }
+
         if (ADMIN_PATHS.contains(path)) {
             return Access.ADMIN;
         }

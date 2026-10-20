@@ -1,6 +1,6 @@
 # 🍕 Full Stack Food Delivery Application
 
-A full-stack food delivery web application built using **React.js, Node.js, Express.js, MongoDB, and JWT authentication**. The application provides a complete food ordering experience for customers along with an admin panel for managing food items and orders. It is being split into services: a Spring Boot **gateway** and a Spring Boot **order-service** (PostgreSQL) run next to the Node.js backend, all started with Docker Compose.
+A full-stack food delivery web application built using **React.js, Node.js, Express.js, MongoDB, and JWT authentication**. The application provides a complete food ordering experience for customers along with an admin panel for managing food items and orders. It is being split into services: a Spring Boot **gateway**, a Spring Boot **order-service** and a Spring Boot **inventory-service** (each with its own PostgreSQL database) run next to the Node.js backend, all started with Docker Compose.
 
 ##  Project Overview
 
@@ -82,12 +82,12 @@ The project also includes a separate **Admin Panel** for managing food items and
 ### Services
 
 - Spring Boot API gateway (verifies the JWT and forwards requests)
-- Spring Boot order-service (Java 17, Spring Data JPA, Flyway)
+- Spring Boot order-service and inventory-service (Java 17, Spring Data JPA, Flyway)
 
 ### Database
 
 - MongoDB (Atlas) for users, foods and carts
-- PostgreSQL 16 for orders (used by order-service)
+- PostgreSQL 16 for orders (order-service) and a separate PostgreSQL 16 for stock (inventory-service)
 
 ### Payment
 
@@ -135,6 +135,7 @@ food-delivery-fullstack/
 │   └── Dockerfile
 │
 ├── order-service/           # Spring Boot order service + PostgreSQL
+├── inventory-service/       # Spring Boot stock service + its own PostgreSQL
 │   ├── src/
 │   ├── pom.xml
 │   └── Dockerfile
@@ -185,7 +186,7 @@ Add `stripe` to also start the Stripe webhook forwarder: `start-dev.bat stripe`.
 
 ## 🐳 Run Everything with Docker
 
-Docker Compose starts six containers: the Node.js backend, the gateway, the order-service, PostgreSQL and the two React apps (built with Vite and served by nginx).
+Docker Compose starts eight containers: the Node.js backend, the gateway, the order-service, the inventory-service, two PostgreSQL databases and the two React apps (built with Vite and served by nginx).
 
 | Service | Container | URL |
 |---|---|---|
@@ -194,7 +195,9 @@ Docker Compose starts six containers: the Node.js backend, the gateway, the orde
 | Node.js backend | `food-backend` | http://localhost:4000 |
 | Gateway | `food-gateway` | http://localhost:8090 |
 | order-service | `food-order-service` | internal only, reached through the gateway at `/api/order/**` |
-| PostgreSQL | `food-postgres` | internal only, no published port |
+| inventory-service | `food-inventory-service` | internal only, reached through the gateway at `/api/inventory/**` |
+| PostgreSQL (orders) | `food-postgres` | internal only, no published port |
+| PostgreSQL (stock) | `food-postgres-inventory` | internal only, no published port |
 
 The React apps call the gateway at `http://localhost:8090`. This address is set at build time with the `VITE_API_URL` build argument in `docker-compose.yml`, because the browser, not the container, makes the requests. Ports 5173 and 5174 are fixed because the backend and gateway only allow those two origins (CORS).
 
@@ -302,6 +305,22 @@ Some tests use Testcontainers, so Docker must be running.
 | `INTERNAL_API_KEY` | backend, order-service | Shared key for internal endpoints |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | order-service | Stripe payments |
 | `NODE_BACKEND_URL` | gateway | Where the gateway forwards requests |
+
+---
+
+## 📦 Inventory Service
+
+`inventory-service` is a Spring Boot (Java 17) service that keeps stock levels in its own PostgreSQL database. Tables are created by Flyway migrations (`inventory-service/src/main/resources/db/migration`).
+
+- **Opt-in tracking:** a food with no stock row is "not tracked" and is always available. Setting a stock level for a food starts tracking it, so existing foods keep working.
+- **Reservations:** an order holds stock with `POST /internal/inventory/reservations`. It is all or nothing: if one food is short, no stock is taken and the answer is `409` with the food id and how many are left. The reservation is later committed (paid) or released (payment failed or expired), and the stock goes back exactly once.
+- **Safe under load:** stock is taken with one atomic SQL update (`quantity >= :qty`), and the database `CHECK (quantity >= 0)` is the last line of defence. A test starts 10 orders at the same time for 3 units and expects exactly 3 to win.
+- **Idempotent:** every call is keyed by the order id, so a retry never takes or returns stock twice.
+- **Admin API (through the gateway, admin only):** `GET /api/inventory` lists stock, `PUT /api/inventory/{foodId}` with `{"quantity": 10}` sets it.
+- **Public API:** `GET /api/inventory/availability` returns `{ foodId: true/false }` for the menu, without exposing quantities.
+- **Internal API:** `/internal/**` needs the shared `X-Internal-Key` (`INTERNAL_API_KEY`), and the gateway never routes it from outside.
+
+Order-service does not call it yet; that connection comes next, followed by events.
 
 ---
 

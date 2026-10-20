@@ -26,6 +26,9 @@ class RouteAccessTest {
             "HEAD,/images/123-food.png",
             "POST,/api/order/webhook",
             "OPTIONS,/api/order/place",
+            // The menu shows "out of stock" without a login
+            "GET,/api/inventory/availability",
+            "HEAD,/api/inventory/availability",
     })
     void publicRoutes(String method, String path) {
         assertThat(routes.classify(method, path)).isEqualTo(PUBLIC);
@@ -58,6 +61,12 @@ class RouteAccessTest {
             "GET,/API/ORDER/LIST",
             "GET,/api/order/list/",
             "DELETE,/api/food/remove",
+            // Stock management: everything under /api/inventory except the public list
+            "GET,/api/inventory",
+            "PUT,/api/inventory/64b000000000000000000001",
+            "POST,/api/inventory/availability",
+            "GET,/api/inventory/availability/extra",
+            "GET,/API/INVENTORY/",
     })
     void adminRoutes(String method, String path) {
         assertThat(routes.classify(method, path)).isEqualTo(ADMIN);
@@ -85,6 +94,11 @@ class RouteAccessTest {
     })
     void internalRoutesAreBlocked(String method, String path) {
         assertThat(routes.classify(method, path)).isEqualTo(BLOCKED);
+    }
+
+    @Test
+    void aPathThatOnlyStartsWithTheWordInventoryIsNotTreatedAsStockManagement() {
+        assertThat(routes.classify("GET", "/api/inventorystuff")).isEqualTo(USER);
     }
 
     @Test
