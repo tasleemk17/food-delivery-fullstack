@@ -526,7 +526,11 @@ Stripe payments are verified on the backend before marking an order as paid.
 
 **Menu: categories and top dishes**
 
-![Menu with categories and dishes](docs/screenshots/menu-full.png)
+![Menu with categories and dishes](docs/screenshots/menu.jpg)
+
+**Cart**
+
+![Cart with totals and delivery fee](docs/screenshots/cart.jpg)
 
 ### Admin Panel
 
