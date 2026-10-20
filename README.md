@@ -542,7 +542,17 @@ Stripe payments are verified on the backend before marking an order as paid.
 
 ### Admin Panel
 
-_Admin panel screenshots (add food, food list, orders) are coming soon._
+**Orders** (the admin changes the delivery status; customer details are hidden in this screenshot)
+
+![Admin orders page with status dropdown](docs/screenshots/admin-orders.jpg)
+
+**Add a food item**
+
+![Admin add food form](docs/screenshots/admin-add-food.jpg)
+
+**Food list**
+
+![Admin food list](docs/screenshots/admin-food-list.jpg)
 
 ---
 
