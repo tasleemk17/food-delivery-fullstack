@@ -518,15 +518,31 @@ Stripe payments are verified on the backend before marking an order as paid.
 
 ## 📸 Screenshots
 
-Screenshots of the application can be added here to showcase the user interface.
-
 ### Customer Application
 
-_Add screenshots of the home page, food listing, cart, checkout, and orders here._
+**Home page**
+
+![Home page](docs/screenshots/home.png)
+
+**Menu: categories and top dishes**
+
+![Menu with categories and dishes](docs/screenshots/menu.jpg)
+
+**Cart**
+
+![Cart with totals and delivery fee](docs/screenshots/cart.jpg)
+
+**Payment** (Stripe Checkout in test mode)
+
+![Stripe Checkout page in test mode](docs/screenshots/stripe-checkout.jpg)
+
+**My Orders** (orders are stored by order-service in PostgreSQL)
+
+![My Orders page with order status](docs/screenshots/my-orders.jpg)
 
 ### Admin Panel
 
-_Add screenshots of the admin dashboard, food management, and order management here._
+_Admin panel screenshots (add food, food list, orders) are coming soon._
 
 ---
 
