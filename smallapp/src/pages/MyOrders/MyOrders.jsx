@@ -41,7 +41,8 @@ const MyOrders = () => {
                 })}
               </p>
               <p>
-                {currency}${order.amount}.00
+                {currency}
+                {Number(order.amount).toFixed(2)}
               </p>
               <p>Items: {order.items.length}</p>
               <p>
