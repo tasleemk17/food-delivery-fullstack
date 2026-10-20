@@ -3,9 +3,7 @@ import cors from "cors";
 import userRouter from "./routes/userRoute.js";
 import foodRouter from "./routes/foodRoute.js";
 import cartRouter from "./routes/cartRoute.js";
-import orderRouter from "./routes/orderRoute.js";
 import internalRouter from "./routes/internalRoute.js";
-import { stripeWebhook } from "./controllers/orderController.js";
 
 // The Express app is built here without connecting to the database or
 // listening on a port, so tests can import it directly (see tests/).
@@ -18,23 +16,15 @@ const allowedOrigins = [
 ];
 app.use(cors({ origin: allowedOrigins }));
 
-// Stripe signs the raw request body, so the webhook route must receive the
-// body unparsed. It is registered BEFORE express.json() for that reason.
-app.post(
-  "/api/order/webhook",
-  express.raw({ type: "application/json" }),
-  stripeWebhook,
-);
-
 app.use(express.json({ limit: "100kb" }));
 
 app.use("/api/user", userRouter);
 app.use("/api/food", foodRouter);
 app.use("/images", express.static("uploads"));
 app.use("/api/cart", cartRouter);
-app.use("/api/order", orderRouter);
 
-// Service-to-service routes (order-service). Blocked at the gateway and
+// Orders and payments live in order-service (the gateway routes /api/order there).
+// Service-to-service routes used by order-service. Blocked at the gateway and
 // protected by INTERNAL_API_KEY.
 app.use("/internal", internalRouter);
 

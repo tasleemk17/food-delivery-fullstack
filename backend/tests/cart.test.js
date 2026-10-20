@@ -18,7 +18,6 @@ const foodModel = {
   create: jest.fn(),
   exists: jest.fn(),
 };
-const orderModel = { create: jest.fn() };
 
 jest.unstable_mockModule("../models/userModel.js", () => ({
   default: userModel,
@@ -26,28 +25,11 @@ jest.unstable_mockModule("../models/userModel.js", () => ({
 jest.unstable_mockModule("../models/foodModel.js", () => ({
   default: foodModel,
 }));
-jest.unstable_mockModule("../models/orderModel.js", () => ({
-  default: orderModel,
-  ORDER_STATUSES: [],
-  ADMIN_SETTABLE_STATUSES: [],
-}));
 
 const { default: app } = await import("../app.js");
 
 const userToken = tokenFor(USER_ID);
 const adminToken = tokenFor(USER_ID, "admin");
-const address = {
-  firstName: "Asha",
-  lastName: "K",
-  email: "a@b.com",
-  street: "1 MG Road",
-  city: "Pune",
-  state: "MH",
-  zipcode: "411001",
-  country: "India",
-  phone: "9999999999",
-};
-
 beforeEach(() => {
   jest.clearAllMocks();
   userModel.findById.mockResolvedValue({
@@ -87,38 +69,6 @@ describe("loading the cart", () => {
 
     expect(res.body.cartData).toEqual({ [FOOD_A]: 1 });
     expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
-  });
-});
-
-describe("placing an order with a deleted food in the cart", () => {
-  test("first attempt: 409, the deleted food is removed, no order is created", async () => {
-    const res = await request(app)
-      .post("/api/order/placecod")
-      .set("token", userToken)
-      .send({ address });
-
-    expect(res.status).toBe(409);
-    expect(res.body.message).toMatch(/no longer available/);
-    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(USER_ID, {
-      cartData: { [FOOD_A]: 1 },
-    });
-    expect(orderModel.create).not.toHaveBeenCalled();
-  });
-
-  test("next attempt with the cleaned cart goes through", async () => {
-    userModel.findById.mockResolvedValue({
-      _id: USER_ID,
-      cartData: { [FOOD_A]: 1 },
-    });
-    orderModel.create.mockResolvedValue({ _id: "order-1" });
-
-    const res = await request(app)
-      .post("/api/order/placecod")
-      .set("token", userToken)
-      .send({ address });
-
-    expect(res.status).toBe(201);
-    expect(orderModel.create.mock.calls[0][0].amount).toBe(250); // 200 + 50 delivery
   });
 });
 
