@@ -76,6 +76,7 @@ services:
     env_file: ./backend/.env
     environment:
       NODE_BASE_URL: http://backend:4000
+      INVENTORY_BASE_URL: http://inventory-service:8082
       DB_URL: jdbc:postgresql://postgres:5432/orders
       DB_USER: orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders_local_pw}
@@ -84,6 +85,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      inventory-service:
+        condition: service_started
     mem_limit: 512m
     restart: unless-stopped
 

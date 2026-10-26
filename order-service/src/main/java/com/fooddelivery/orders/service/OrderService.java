@@ -5,6 +5,7 @@ import com.fooddelivery.orders.domain.OrderEntity;
 import com.fooddelivery.orders.domain.OrderRepository;
 import com.fooddelivery.orders.domain.OrderStatus;
 import com.fooddelivery.orders.domain.PaymentMethod;
+import com.fooddelivery.orders.inventory.InventoryPort;
 import com.fooddelivery.orders.node.CartPort;
 import com.fooddelivery.orders.node.CartSnapshot;
 import com.fooddelivery.orders.payment.PaymentGateway;
@@ -29,8 +30,14 @@ import org.springframework.stereotype.Service;
  *
  * Deliberately NOT @Transactional: every repository call is its own short
  * transaction, so a slow Node or Stripe call never holds a database connection.
- * The cart is read (and priced) before anything is saved, so if Node is down
- * the caller gets 503 and no order row exists.
+ * The cart is read (and priced) and the stock is reserved before anything is
+ * saved, so if Node or inventory-service is down, or a food is out of stock,
+ * the caller gets an error and no order row exists.
+ *
+ * Stock life cycle: reserved when the order is placed, committed when it is
+ * paid (COD: straight away), released when payment fails or expires. Commit
+ * and release only change the reservation's label, so a failure there is
+ * logged and never fails the order.
  */
 @Service
 public class OrderService {
@@ -41,30 +48,35 @@ public class OrderService {
     private final CartPort cart;
     private final PricingService pricing;
     private final PaymentGateway payments;
+    private final InventoryPort inventory;
     private final Clock clock;
 
     public OrderService(OrderRepository orders, CartPort cart, PricingService pricing,
-                        PaymentGateway payments, Clock clock) {
+                        PaymentGateway payments, InventoryPort inventory, Clock clock) {
         this.orders = orders;
         this.cart = cart;
         this.pricing = pricing;
         this.payments = payments;
+        this.inventory = inventory;
         this.clock = clock;
     }
 
-    /** Cash on delivery: save the order, then clear the cart. */
+    /** Cash on delivery: hold the stock, save the order, confirm the stock, then clear the cart. */
     public void placeCod(String userId, Address address) {
         PricedOrder priced = priceCart(userId);
         OrderEntity order = newOrder(userId, PaymentMethod.COD, OrderStatus.FOOD_PROCESSING, address, priced);
-        orders.save(order);
+        reserveStock(order, priced);
+        saveOrReleaseStock(order);
+        commitStockQuietly(order.getId()); // nothing to wait for: cash on delivery is confirmed
         clearCartQuietly(userId);
     }
 
-    /** Stripe: save a pending order, open a Checkout Session, return its URL. */
+    /** Stripe: hold the stock, save a pending order, open a Checkout Session, return its URL. */
     public String placeStripe(String userId, Address address) {
         PricedOrder priced = priceCart(userId);
-        OrderEntity order = orders.save(
-                newOrder(userId, PaymentMethod.STRIPE, OrderStatus.PAYMENT_PENDING, address, priced));
+        OrderEntity order = newOrder(userId, PaymentMethod.STRIPE, OrderStatus.PAYMENT_PENDING, address, priced);
+        reserveStock(order, priced);
+        saveOrReleaseStock(order);
 
         List<PaymentGateway.Line> lines = priced.items().stream()
                 .map(i -> new PaymentGateway.Line(i.name(), i.unitPrice(), i.quantity()))
@@ -74,6 +86,7 @@ public class OrderService {
             session = payments.createCheckoutSession(order.getId(), lines, PricingService.DELIVERY_CHARGE);
         } catch (RuntimeException e) {
             orders.markFailedIfUnpaid(order.getId());
+            releaseStockQuietly(order.getId());
             throw e;
         }
         orders.setStripeSessionId(order.getId(), session.id());
@@ -112,7 +125,9 @@ public class OrderService {
                     .filter(o -> paysFor(session, o))
                     .ifPresent(this::markPaid);
         } else if ("checkout.session.expired".equals(event.type())) {
-            orders.markFailedIfUnpaid(orderId);
+            if (orders.markFailedIfUnpaid(orderId) == 1) {
+                releaseStockQuietly(orderId); // nobody will pay: give the stock back
+            }
         }
     }
 
@@ -159,10 +174,64 @@ public class OrderService {
         return PaymentRules.sessionPaysForOrder(session, order.getId(), expected);
     }
 
-    /** Only the call that actually flips paid=false to true clears the cart. */
+    /** Only the call that actually flips paid=false to true confirms the stock and clears the cart. */
     private void markPaid(OrderEntity order) {
         if (orders.markPaidIfUnpaid(order.getId()) == 1) {
+            commitStockQuietly(order.getId());
             clearCartQuietly(order.getUserId());
+        }
+    }
+
+    /**
+     * Holds the stock for this order. If a food is short the customer is told which one
+     * and nothing is saved; if inventory-service is down the caller gets 503.
+     */
+    private void reserveStock(OrderEntity order, PricedOrder priced) {
+        List<InventoryPort.StockLine> lines = priced.items().stream()
+                .map(i -> new InventoryPort.StockLine(i.foodId(), i.quantity()))
+                .toList();
+        try {
+            inventory.reserve(order.getId(), lines);
+        } catch (OutOfStockException e) {
+            throw new OrderException(HttpStatus.CONFLICT, outOfStockMessage(priced, e));
+        }
+    }
+
+    private static String outOfStockMessage(PricedOrder priced, OutOfStockException e) {
+        String name = priced.items().stream()
+                .filter(i -> i.foodId().equals(e.foodId()))
+                .map(PricedOrder.PricedItem::name)
+                .findFirst()
+                .orElse("An item in your cart");
+        return e.available() <= 0
+                ? name + " is out of stock. Please remove it from your cart and try again."
+                : "Only " + e.available() + " left of " + name + ". Please reduce the quantity and try again.";
+    }
+
+    /** Saves the order; if saving fails the stock that was just held is given back. */
+    private void saveOrReleaseStock(OrderEntity order) {
+        try {
+            orders.save(order);
+        } catch (RuntimeException e) {
+            releaseStockQuietly(order.getId());
+            throw e;
+        }
+    }
+
+    private void commitStockQuietly(UUID orderId) {
+        try {
+            inventory.commit(orderId);
+        } catch (RuntimeException e) {
+            // The order is saved and the stock is already taken; only the label did not change
+            log.warn("Could not commit the stock reservation of order {}: {}", orderId, e.getMessage());
+        }
+    }
+
+    private void releaseStockQuietly(UUID orderId) {
+        try {
+            inventory.release(orderId);
+        } catch (RuntimeException e) {
+            log.warn("Could not release the stock reservation of order {}: {}", orderId, e.getMessage());
         }
     }
 

@@ -11,6 +11,8 @@ import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.checkout.SessionCreateParams;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,13 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class StripePaymentGateway implements PaymentGateway {
+
+    /**
+     * How long a customer has to pay. Unpaid orders hold stock until the session expires
+     * (Stripe then sends checkout.session.expired and the stock is released), so this is
+     * 35 minutes instead of Stripe's 24 hours. Stripe's minimum is 30 minutes.
+     */
+    static final Duration SESSION_LIFETIME = Duration.ofMinutes(35);
 
     private final StripeProperties stripe;
     private final AppProperties app;
@@ -35,6 +44,7 @@ public class StripePaymentGateway implements PaymentGateway {
                 .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setSuccessUrl(base + "/verify?orderId=" + orderId + "&session_id={CHECKOUT_SESSION_ID}")
                 .setCancelUrl(base + "/verify?orderId=" + orderId)
+                .setExpiresAt(Instant.now().plus(SESSION_LIFETIME).getEpochSecond())
                 .putMetadata("orderId", orderId.toString());
 
         for (Line l : lines) {
