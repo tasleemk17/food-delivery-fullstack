@@ -15,6 +15,12 @@ spring:
           predicates:
             - Path=/api/order/**
 
+        # Stock levels (admin) and the public "in stock" list for the menu.
+        - id: inventory-service
+          uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/inventory/**
+
         # Everything else goes to the Node backend.
         - id: node-backend
           uri: ${NODE_BACKEND_URL:http://localhost:4000}

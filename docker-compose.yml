@@ -1,4 +1,4 @@
-# Node backend, API gateway, order-service, PostgreSQL and the two React apps.
+# Node backend, API gateway, order-service, inventory-service, their PostgreSQL databases and the two React apps.
 # Start:  docker compose up -d --build
 # Stop:   docker compose down          (add -v to also delete the PostgreSQL data)
 #
@@ -34,6 +34,7 @@ services:
       # Inside Docker, services reach each other by service name, not localhost
       NODE_BACKEND_URL: http://backend:4000
       ORDER_SERVICE_URL: http://order-service:8081
+      INVENTORY_SERVICE_URL: http://inventory-service:8082
       FRONTEND_URL: http://localhost:5173
       ADMIN_URL: http://localhost:5174
     ports:
@@ -43,6 +44,8 @@ services:
       backend:
         condition: service_healthy
       order-service:
+        condition: service_started
+      inventory-service:
         condition: service_started
     mem_limit: 512m
     restart: unless-stopped
@@ -84,6 +87,41 @@ services:
     mem_limit: 512m
     restart: unless-stopped
 
+  # Each service has its own database, so neither can read or break the other's tables
+  postgres-inventory:
+    image: postgres:16-alpine
+    container_name: food-postgres-inventory
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: inventory
+      # Local development password. Set INVENTORY_DB_PASSWORD in a root .env file to change it.
+      POSTGRES_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_local_pw}
+    volumes:
+      - inventory-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d inventory"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No ports: only inventory-service talks to the database, over the Docker network
+    restart: unless-stopped
+
+  inventory-service:
+    build: ./inventory-service
+    container_name: food-inventory-service
+    # INTERNAL_API_KEY (the key order-service sends in X-Internal-Key) comes from backend/.env
+    env_file: ./backend/.env
+    environment:
+      DB_URL: jdbc:postgresql://postgres-inventory:5432/inventory
+      DB_USER: inventory
+      DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_local_pw}
+    # No ports: reached only through the gateway (/api/inventory) or by order-service
+    depends_on:
+      postgres-inventory:
+        condition: service_healthy
+    mem_limit: 512m
+    restart: unless-stopped
+
   smallapp:
     build:
       context: ./smallapp
@@ -115,3 +153,4 @@ services:
 
 volumes:
   orders-data:
+  inventory-data:
