@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -73,6 +74,17 @@ public class InventoryController {
             throw new InventoryException(HttpStatus.BAD_REQUEST, "Quantity is required");
         }
         return ResponseEntity.ok(ApiResponse.ok(StockResponse.from(inventory.setStock(foodId, body.quantity()))));
+    }
+
+    /** Admin: stop tracking a food, so it is always available again. */
+    @DeleteMapping("/{foodId}")
+    public ResponseEntity<ApiResponse<Void>> stopTracking(
+            @RequestHeader(value = USER_ID_HEADER, required = false) String userId,
+            @RequestHeader(value = USER_ROLE_HEADER, required = false) String role,
+            @PathVariable String foodId) {
+        requireAdmin(userId, role);
+        inventory.stopTracking(foodId);
+        return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
     private static void requireAdmin(String userId, String role) {

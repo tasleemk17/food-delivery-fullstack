@@ -1,0 +1,95 @@
+.stock-help {
+  font-size: 13px;
+  color: #6d6d6d;
+  max-width: 640px;
+}
+
+.stock-table-format {
+  display: grid;
+  grid-template-columns: 0.5fr 1.6fr 0.9fr 1.3fr 1fr 1.6fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  border: 1px solid #cacaca;
+  font-size: 13px;
+}
+.stock-table-format.title {
+  background-color: #f9f9f9;
+}
+.stock-table-format img {
+  width: 50px;
+}
+.stock-table-format input {
+  width: 100%;
+  max-width: 110px;
+  padding: 7px 8px;
+  border: 1px solid #c4c4c4;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.stock-empty {
+  padding: 14px 15px;
+  border: 1px solid #cacaca;
+  border-top: none;
+  font-size: 13px;
+  color: #6d6d6d;
+}
+
+.stock-badge {
+  display: inline-block;
+  width: fit-content;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.stock-badge.ok {
+  background: #e6f6ea;
+  color: #1d7a36;
+}
+.stock-badge.low {
+  background: #fff1dc;
+  color: #a05a00;
+}
+.stock-badge.out {
+  background: #fde8e6;
+  color: #b3261e;
+}
+.stock-badge.untracked {
+  background: #eeeeee;
+  color: #555555;
+}
+
+.stock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stock-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background: tomato;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stock-actions button.secondary {
+  background: white;
+  color: #555555;
+  border: 1px solid #c4c4c4;
+}
+.stock-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 800px) {
+  .stock-table-format {
+    grid-template-columns: 1fr 2fr 1.5fr;
+    gap: 12px;
+  }
+  .stock-table-format.title {
+    display: none;
+  }
+}
