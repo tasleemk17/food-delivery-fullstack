@@ -65,3 +65,19 @@
 .food-item-counter img {
   width: 30px;
 }
+
+/* Out of stock: dim the picture and show a badge; the add button is not rendered */
+.food-item-img-container.sold-out .food-item-image {
+  filter: grayscale(1) opacity(0.55);
+}
+.food-item-soldout-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 5px 12px;
+  border-radius: 50px;
+  background-color: #b3261e;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+}

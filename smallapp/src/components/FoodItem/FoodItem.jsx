@@ -5,18 +5,32 @@ import { StoreContext } from "../../context/StoreContext";
 
 const FoodItem = ({ image, name, price, desc, id }) => {
   const [itemCount, setItemCount] = useState(0);
-  const { cartItems, addToCart, removeFromCart, url, currency } =
+  const { cartItems, addToCart, removeFromCart, url, currency, isOutOfStock } =
     useContext(StoreContext);
+  const soldOut = isOutOfStock(id);
 
   return (
     <div className="food-item">
-      <div className="food-item-img-container">
+      <div className={"food-item-img-container" + (soldOut ? " sold-out" : "")}>
         <img
           className="food-item-image"
           src={url + "/images/" + image}
           alt=""
         />
-        {!cartItems[id] ? (
+        {soldOut && <span className="food-item-soldout-badge">Out of stock</span>}
+        {soldOut ? (
+          // Nothing can be added. If it is already in the cart, it can still be removed.
+          cartItems[id] > 0 && (
+            <div className="food-item-counter">
+              <img
+                src={assets.remove_icon_red}
+                onClick={() => removeFromCart(id)}
+                alt="Remove from cart"
+              />
+              <p>{cartItems[id]}</p>
+            </div>
+          )
+        ) : !cartItems[id] ? (
           <img
             className="add"
             onClick={() => addToCart(id)}

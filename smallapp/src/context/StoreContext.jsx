@@ -9,6 +9,9 @@ const StoreContextProvider = (props) => {
   const url = API_URL;
   const [food_list, setFoodList] = useState([]);
   const [cartItems, setCartItems] = useState({});
+  // foodId -> true/false for foods whose stock is tracked. A food that is not
+  // in this list is always available.
+  const [availability, setAvailability] = useState({});
   const [token, setToken] = useState("");
   const currency = "₹";
   const deliveryCharge = 50;
@@ -47,6 +50,20 @@ const StoreContextProvider = (props) => {
     setFoodList(response.data.data || []);
   };
 
+  // Only for showing "Out of stock" on the menu. If this call fails the menu
+  // simply shows everything as available; the server still checks the stock
+  // when the order is placed, so nothing can be oversold.
+  const fetchAvailability = async () => {
+    try {
+      const response = await api.get("/api/inventory/availability");
+      if (response.data.success) setAvailability(response.data.data || {});
+    } catch {
+      /* keep what we have */
+    }
+  };
+
+  const isOutOfStock = (itemId) => availability[itemId] === false;
+
   // Bug fix: this used to send `{ headers: token }` (the token string as the
   // whole headers object), so the token never reached the server. The api
   // client now attaches the token automatically.
@@ -57,7 +74,7 @@ const StoreContextProvider = (props) => {
 
   useEffect(() => {
     async function loadData() {
-      await fetchFoodList();
+      await Promise.all([fetchFoodList(), fetchAvailability()]);
       if (localStorage.getItem("token")) {
         setToken(localStorage.getItem("token"));
         await loadCartData();
@@ -71,7 +88,17 @@ const StoreContextProvider = (props) => {
       setCartItems({});
     };
     window.addEventListener("auth:logout", onLogout);
-    return () => window.removeEventListener("auth:logout", onLogout);
+
+    // Stock changes while the page stays open: look again when the tab is shown
+    const onVisible = () => {
+      if (document.visibilityState === "visible") fetchAvailability();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.removeEventListener("auth:logout", onLogout);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const contextValue = {
@@ -79,6 +106,8 @@ const StoreContextProvider = (props) => {
     food_list,
     menu_list,
     cartItems,
+    isOutOfStock,
+    fetchAvailability,
     addToCart,
     removeFromCart,
     getTotalCartAmount,

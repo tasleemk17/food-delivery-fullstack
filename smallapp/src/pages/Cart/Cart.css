@@ -92,3 +92,10 @@
     }
     
 }
+
+.cart-items-soldout {
+  display: block;
+  color: #b3261e;
+  font-size: 12px;
+  font-weight: 500;
+}
