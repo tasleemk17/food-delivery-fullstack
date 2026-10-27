@@ -158,6 +158,17 @@ public class InventoryService {
         return item;
     }
 
+    /**
+     * Stops tracking a food: it goes back to "always available". Safe to repeat.
+     * Reservations that already hold this food keep working; releasing one simply
+     * has no stock row to put units back into.
+     */
+    @Transactional
+    public void stopTracking(String foodId) {
+        validateFoodId(foodId);
+        stock.deleteById(foodId);
+    }
+
     @Transactional(readOnly = true)
     public List<StockItem> listStock() {
         return stock.findAllByOrderByFoodIdAsc();

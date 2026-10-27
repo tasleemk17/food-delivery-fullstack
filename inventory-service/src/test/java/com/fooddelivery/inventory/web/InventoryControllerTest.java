@@ -3,6 +3,7 @@ package com.fooddelivery.inventory.web;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -85,6 +86,22 @@ class InventoryControllerTest {
                         .header("X-User-Role", "user")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quantity\":7}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(inventory);
+    }
+
+    @Test
+    void anAdminCanStopTrackingAFood() throws Exception {
+        mvc.perform(delete("/api/inventory/A").header("X-User-Id", "u1").header("X-User-Role", "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+        verify(inventory).stopTracking("A");
+    }
+
+    @Test
+    void stoppingTrackingNeedsAnAdmin() throws Exception {
+        mvc.perform(delete("/api/inventory/A")).andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/inventory/A").header("X-User-Id", "u1").header("X-User-Role", "user"))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(inventory);
     }

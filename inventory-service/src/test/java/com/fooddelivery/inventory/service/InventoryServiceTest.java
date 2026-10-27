@@ -234,6 +234,33 @@ class InventoryServiceTest {
     }
 
     @Test
+    void stoppingTrackingMakesTheFoodAlwaysAvailableAgain() {
+        inventory.setStock("A", 1);
+        inventory.reserve(UUID.randomUUID(), List.of(new Line("A", 1)));
+        assertThatThrownBy(() -> inventory.reserve(UUID.randomUUID(), List.of(new Line("A", 1))))
+                .isInstanceOf(InsufficientStockException.class);
+
+        inventory.stopTracking("A");
+        inventory.stopTracking("A"); // repeating is harmless
+
+        assertThat(stock.existsById("A")).isFalse();
+        assertThat(inventory.reserve(UUID.randomUUID(), List.of(new Line("A", 50))).status())
+                .isEqualTo("NOT_TRACKED");
+        assertThat(inventory.availability()).isEmpty();
+    }
+
+    @Test
+    void releasingAfterTrackingStoppedDoesNotFail() {
+        inventory.setStock("A", 3);
+        UUID order = UUID.randomUUID();
+        inventory.reserve(order, List.of(new Line("A", 2)));
+        inventory.stopTracking("A");
+
+        assertThat(inventory.release(order).status()).isEqualTo("RELEASED");
+        assertThat(stock.existsById("A")).isFalse(); // nothing was put back into a row that is gone
+    }
+
+    @Test
     void availabilityShowsOnlyWhetherTrackedFoodsAreInStock() {
         inventory.setStock("A", 0);
         inventory.setStock("B", 2);

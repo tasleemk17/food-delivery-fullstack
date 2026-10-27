@@ -45,6 +45,7 @@ The project also includes a separate **Admin Panel** for managing food items and
 - Manage food items
 - View customer orders
 - Update order status
+- Manage stock levels (track a food, set its units, stop tracking)
 - Upload food images
 
 ### 🔐 Authentication & Security
@@ -318,7 +319,8 @@ Some tests use Testcontainers, so Docker must be running.
 - **Reservations:** an order holds stock with `POST /internal/inventory/reservations`. It is all or nothing: if one food is short, no stock is taken and the answer is `409` with the food id and how many are left. The reservation is later committed (paid) or released (payment failed or expired), and the stock goes back exactly once.
 - **Safe under load:** stock is taken with one atomic SQL update (`quantity >= :qty`), and the database `CHECK (quantity >= 0)` is the last line of defence. A test starts 10 orders at the same time for 3 units and expects exactly 3 to win.
 - **Idempotent:** every call is keyed by the order id, so a retry never takes or returns stock twice.
-- **Admin API (through the gateway, admin only):** `GET /api/inventory` lists stock, `PUT /api/inventory/{foodId}` with `{"quantity": 10}` sets it.
+- **Admin API (through the gateway, admin only):** `GET /api/inventory` lists stock, `PUT /api/inventory/{foodId}` with `{"quantity": 10}` sets it, and `DELETE /api/inventory/{foodId}` stops tracking the food (it is always available again).
+- **Admin panel:** the **Stock** page lists every food with a status badge (not tracked, in stock, low, out of stock), a field to type the units, and Save / Stop tracking buttons.
 - **Public API:** `GET /api/inventory/availability` returns `{ foodId: true/false }` for the menu, without exposing quantities.
 - **Internal API:** `/internal/**` needs the shared `X-Internal-Key` (`INTERNAL_API_KEY`), and the gateway never routes it from outside.
 
