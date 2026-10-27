@@ -18,6 +18,19 @@ spring:
     generator:
       # 380 instead of 3.8E+2 for BigDecimal amounts
       write-bigdecimal-as-plain: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Wait for the broker to confirm, and never create duplicates when a send is retried
+      acks: all
+      properties:
+        enable.idempotence: true
+        # Fail fast when the broker is down: the event just stays in the outbox
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
 
 # Node backend: source of cart contents and prices (internal API, shared secret)
 node:
@@ -39,6 +52,13 @@ stripe:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
+
+# Order events go to Kafka through the outbox table (see OutboxPublisher)
+outbox:
+  topic: order-events
+  poll-interval-ms: 1000
+  batch-size: 50
+  send-timeout-ms: 5000
 
 management:
   endpoints:

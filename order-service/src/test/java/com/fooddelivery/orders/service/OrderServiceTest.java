@@ -52,6 +52,7 @@ class OrderServiceTest {
     @Mock CartPort cart;
     @Mock PaymentGateway payments;
     @Mock InventoryPort inventory;
+    @Mock OrderTransitions transitions;
 
     private OrderService service;
     private static final Address ADDRESS =
@@ -64,10 +65,9 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderService(orders, cart, new PricingService(), payments, inventory,
+        service = new OrderService(orders, cart, new PricingService(), payments, inventory, transitions,
                 Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
         given(cart.fetchCart("u1")).willReturn(CART);
-        given(orders.save(any(OrderEntity.class))).willAnswer(i -> i.getArgument(0));
     }
 
     private static OrderEntity storedOrder(UUID id, boolean stripe, String sessionId) {
@@ -95,7 +95,7 @@ class OrderServiceTest {
         service.placeCod("u1", ADDRESS);
 
         ArgumentCaptor<OrderEntity> saved = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(orders).save(saved.capture());
+        verify(transitions).place(saved.capture());
         assertThat(saved.getValue().getAmount()).isEqualByComparingTo("290");
         assertThat(saved.getValue().getStatus()).isEqualTo(OrderStatus.FOOD_PROCESSING);
         assertThat(saved.getValue().getPaymentMethod()).isEqualTo(PaymentMethod.COD);
@@ -106,7 +106,7 @@ class OrderServiceTest {
     void codStillSucceedsIfClearingTheCartFails() {
         doThrow(new UpstreamUnavailableException("down", null)).when(cart).clearCart("u1");
         service.placeCod("u1", ADDRESS);
-        verify(orders).save(any(OrderEntity.class));
+        verify(transitions).place(any(OrderEntity.class));
     }
 
     @Test
@@ -114,7 +114,7 @@ class OrderServiceTest {
         given(cart.fetchCart("u1")).willThrow(new UpstreamUnavailableException("down", null));
         assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
         assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
-        verifyNoInteractions(orders, payments, inventory);
+        verifyNoInteractions(transitions, payments, inventory);
     }
 
     @Test
@@ -122,7 +122,7 @@ class OrderServiceTest {
         given(cart.fetchCart("u1")).willReturn(new CartSnapshot(Map.of("gone", BigDecimal.ONE), List.of()));
         assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(UnavailableItemException.class);
         verify(cart).removeUnavailable("u1");
-        verify(orders, never()).save(any());
+        verify(transitions, never()).place(any());
     }
 
     // -------------------------------------------------------------- Stripe
@@ -136,7 +136,7 @@ class OrderServiceTest {
 
         assertThat(url).isEqualTo("https://stripe/pay");
         ArgumentCaptor<OrderEntity> saved = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(orders).save(saved.capture());
+        verify(transitions).place(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
         verify(orders).setStripeSessionId(any(), eq("cs_1"));
         verify(cart, never()).clearCart(anyString()); // cart is cleared only once paid
@@ -147,7 +147,7 @@ class OrderServiceTest {
         given(payments.createCheckoutSession(any(), any(), any()))
                 .willThrow(new PaymentProviderException("boom", null));
         assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(PaymentProviderException.class);
-        verify(orders).markFailedIfUnpaid(any());
+        verify(transitions).markFailed(any());
     }
 
     // -------------------------------------------------------------- verify
@@ -159,12 +159,12 @@ class OrderServiceTest {
         given(payments.retrieveSession("cs_1"))
                 .willReturn(new StripeSessionInfo("cs_1", "paid", 29000L, "inr", id.toString()));
 
-        given(orders.markPaidIfUnpaid(id)).willReturn(1);
+        given(transitions.markPaid(id)).willReturn(true);
         assertThat(service.verify("u1", id)).isTrue();
         verify(cart).clearCart("u1");
 
         // second arrival (webhook raced us): update affects 0 rows -> still "Paid", cart not cleared again
-        given(orders.markPaidIfUnpaid(id)).willReturn(0);
+        given(transitions.markPaid(id)).willReturn(false);
         assertThat(service.verify("u1", id)).isTrue();
         verify(cart).clearCart("u1"); // still exactly once
     }
@@ -176,7 +176,7 @@ class OrderServiceTest {
         given(payments.retrieveSession("cs_1"))
                 .willReturn(new StripeSessionInfo("cs_1", "paid", 100L, "inr", id.toString()));
         assertThat(service.verify("u1", id)).isFalse();
-        verify(orders, never()).markPaidIfUnpaid(any());
+        verify(transitions, never()).markPaid(any());
     }
 
     @Test
@@ -204,11 +204,11 @@ class OrderServiceTest {
         StripeSessionInfo s = new StripeSessionInfo("cs_1", "paid", 29000L, "inr", id.toString());
         given(payments.parseWebhook("body", "sig")).willReturn(new WebhookEvent("evt", "checkout.session.completed", s));
         given(orders.findWithItemsById(id)).willReturn(Optional.of(storedOrder(id, true, "cs_1")));
-        given(orders.markPaidIfUnpaid(id)).willReturn(1);
+        given(transitions.markPaid(id)).willReturn(true);
 
         service.handleWebhook("body", "sig");
 
-        verify(orders).markPaidIfUnpaid(id);
+        verify(transitions).markPaid(id);
         verify(cart).clearCart("u1");
     }
 
@@ -219,7 +219,7 @@ class OrderServiceTest {
         given(payments.parseWebhook("body", "sig")).willReturn(new WebhookEvent("evt", "checkout.session.completed", s));
         given(orders.findWithItemsById(id)).willReturn(Optional.of(storedOrder(id, true, "cs_1")));
         service.handleWebhook("body", "sig");
-        verify(orders, never()).markPaidIfUnpaid(any());
+        verify(transitions, never()).markPaid(any());
     }
 
     @Test
@@ -232,10 +232,10 @@ class OrderServiceTest {
                 new StripeSessionInfo("cs", "paid", 1L, "inr", "not-a-uuid")));
 
         service.handleWebhook("b1", "sig");
-        verify(orders).markFailedIfUnpaid(id);
+        verify(transitions).markFailed(id);
         service.handleWebhook("b2", "sig");
         service.handleWebhook("b3", "sig");
-        verify(orders, never()).markPaidIfUnpaid(any());
+        verify(transitions, never()).markPaid(any());
     }
 
     // --------------------------------------------------------------- stock
@@ -248,9 +248,9 @@ class OrderServiceTest {
 
         ArgumentCaptor<UUID> reservedFor = ArgumentCaptor.forClass(UUID.class);
         ArgumentCaptor<OrderEntity> saved = ArgumentCaptor.forClass(OrderEntity.class);
-        InOrder order = inOrder(inventory, orders);
+        InOrder order = inOrder(inventory, transitions);
         order.verify(inventory).reserve(reservedFor.capture(), eq(SALAD_X2));
-        order.verify(orders).save(saved.capture());
+        order.verify(transitions).place(saved.capture());
         order.verify(inventory).commit(saved.getValue().getId());
         // The reservation is keyed by the id the order is saved with
         assertThat(reservedFor.getValue()).isEqualTo(saved.getValue().getId());
@@ -267,7 +267,7 @@ class OrderServiceTest {
                 });
         assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(OrderException.class);
 
-        verify(orders, never()).save(any());
+        verify(transitions, never()).place(any());
         verifyNoInteractions(payments);
         verify(cart, never()).clearCart(anyString()); // the customer keeps their cart to fix it
     }
@@ -287,13 +287,13 @@ class OrderServiceTest {
         assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
         assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
 
-        verify(orders, never()).save(any());
+        verify(transitions, never()).place(any());
         verifyNoInteractions(payments);
     }
 
     @Test
     void ifSavingTheOrderFailsTheStockIsGivenBack() {
-        given(orders.save(any(OrderEntity.class))).willThrow(new IllegalStateException("db down"));
+        doThrow(new IllegalStateException("db down")).when(transitions).place(any(OrderEntity.class));
 
         assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(IllegalStateException.class);
 
@@ -307,7 +307,7 @@ class OrderServiceTest {
 
         service.placeCod("u1", ADDRESS);
 
-        verify(orders).save(any(OrderEntity.class));
+        verify(transitions).place(any(OrderEntity.class));
         verify(cart).clearCart("u1");
     }
 
@@ -340,9 +340,9 @@ class OrderServiceTest {
         given(payments.retrieveSession("cs_1"))
                 .willReturn(new StripeSessionInfo("cs_1", "paid", 29000L, "inr", id.toString()));
 
-        given(orders.markPaidIfUnpaid(id)).willReturn(1);
+        given(transitions.markPaid(id)).willReturn(true);
         service.verify("u1", id);
-        given(orders.markPaidIfUnpaid(id)).willReturn(0);
+        given(transitions.markPaid(id)).willReturn(false);
         service.verify("u1", id);
 
         verify(inventory).commit(id); // exactly once
@@ -353,7 +353,7 @@ class OrderServiceTest {
         UUID id = UUID.randomUUID();
         StripeSessionInfo s = new StripeSessionInfo("cs_1", "unpaid", 29000L, "inr", id.toString());
         given(payments.parseWebhook("b1", "sig")).willReturn(new WebhookEvent("e1", "checkout.session.expired", s));
-        given(orders.markFailedIfUnpaid(id)).willReturn(1);
+        given(transitions.markFailed(id)).willReturn(true);
 
         service.handleWebhook("b1", "sig");
 
@@ -365,7 +365,7 @@ class OrderServiceTest {
         UUID id = UUID.randomUUID();
         StripeSessionInfo s = new StripeSessionInfo("cs_1", "unpaid", 29000L, "inr", id.toString());
         given(payments.parseWebhook("b1", "sig")).willReturn(new WebhookEvent("e1", "checkout.session.expired", s));
-        given(orders.markFailedIfUnpaid(id)).willReturn(0); // paid already: nothing was marked failed
+        given(transitions.markFailed(id)).willReturn(false); // paid already: nothing was marked failed
 
         service.handleWebhook("b1", "sig");
 
@@ -380,11 +380,11 @@ class OrderServiceTest {
         assertThatThrownBy(() -> service.updateStatus(id, "Payment Failed")).hasMessage("Invalid status");
         assertThatThrownBy(() -> service.updateStatus(id, "bogus")).hasMessage("Invalid status");
 
-        given(orders.updateStatusIfPayable(id, OrderStatus.DELIVERED)).willReturn(0);
+        given(transitions.changeStatus(id, OrderStatus.DELIVERED)).willReturn(false);
         assertThatThrownBy(() -> service.updateStatus(id, "Delivered"))
                 .hasMessage("Order not found or not paid yet");
 
-        given(orders.updateStatusIfPayable(id, OrderStatus.OUT_FOR_DELIVERY)).willReturn(1);
+        given(transitions.changeStatus(id, OrderStatus.OUT_FOR_DELIVERY)).willReturn(true);
         service.updateStatus(id, "Out for delivery");
     }
 }
