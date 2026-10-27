@@ -506,11 +506,10 @@ The unit and integration tests of each service run in CI. The `e2e` folder adds 
 docker compose up -d --build        # the stack must be running
 cd e2e
 npm install
-npx playwright install chromium     # once; or use a browser you already have (below)
 npm test
 ```
 
-To use Edge or Chrome that is already installed instead of downloading Chromium: `E2E_BROWSER_CHANNEL=msedge npm test` (Windows PowerShell: `$env:E2E_BROWSER_CHANNEL="msedge"; npm test`). `npm run report` opens the HTML report; a failed test keeps a screenshot and a trace.
+On Windows the tests use the Microsoft Edge that is already installed, so nothing is downloaded. On Linux or macOS run `npx playwright install chromium` once first. To choose another browser: `E2E_BROWSER_CHANNEL=chrome npm test` (Windows PowerShell: `$env:E2E_BROWSER_CHANNEL="chrome"; npm test`). `npm run report` opens the HTML report; a failed test keeps a screenshot and a trace.
 
 **Good to know**
 - Each run signs up one new customer (`e2e.<number>@tomato.test`, a random password) and places one cash on delivery order. They stay in the database: the app has no way to delete them. Admins can recognise the orders by that address.
