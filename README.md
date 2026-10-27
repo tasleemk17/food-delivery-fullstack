@@ -567,6 +567,10 @@ Stripe payments are verified on the backend before marking an order as paid.
 
 ![Stripe Checkout page in test mode](docs/screenshots/stripe-checkout.jpg)
 
+**Stock check at checkout** (order-service asks inventory-service to hold the stock first; the delivery form is left out of this screenshot)
+
+![Message when only 2 units are left](docs/screenshots/stock-check-checkout.png)
+
 **My Orders** (orders are stored by order-service in PostgreSQL)
 
 ![My Orders page with order status](docs/screenshots/my-orders.jpg)
