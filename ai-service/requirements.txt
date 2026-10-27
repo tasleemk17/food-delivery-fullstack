@@ -1,0 +1,12 @@
+# Web API
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+# Claude (the chatbot)
+anthropic>=1.0
+# Own PostgreSQL database
+psycopg[binary,pool]>=3.2
+# Reads the order events
+confluent-kafka>=2.5
+# Fetches the menu and the stock list from the other services
+httpx>=0.27

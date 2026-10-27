@@ -84,11 +84,12 @@ The project also includes a separate **Admin Panel** for managing food items and
 
 - Spring Boot API gateway (verifies the JWT and forwards requests)
 - Spring Boot order-service, inventory-service and notification-service (Java 17, Spring Data JPA, Flyway)
+- Python ai-service (FastAPI): recommendations and a menu chatbot that uses the Claude API
 
 ### Database
 
 - MongoDB (Atlas) for users, foods and carts
-- PostgreSQL 16 for orders (order-service) and a separate PostgreSQL 16 for stock (inventory-service)
+- PostgreSQL 16, one database per service: orders, stock, notifications and AI (recommendation counts)
 
 ### Messaging
 
@@ -147,6 +148,11 @@ food-delivery-fullstack/
 │   ├── pom.xml
 │   └── Dockerfile
 │
+├── ai-service/              # FastAPI: recommendations + menu chatbot (RAG with Claude)
+│   ├── app/
+│   ├── tests/
+│   └── Dockerfile
+│
 ├── smallapp/
 │   ├── public/
 │   ├── src/
@@ -193,7 +199,7 @@ Add `stripe` to also start the Stripe webhook forwarder: `start-dev.bat stripe`.
 
 ## 🐳 Run Everything with Docker
 
-Docker Compose starts twelve containers: the Node.js backend, the gateway, the order-service, the inventory-service, the notification-service, Kafka, MailHog (a test mailbox), three PostgreSQL databases and the two React apps (built with Vite and served by nginx).
+Docker Compose starts fourteen containers: the Node.js backend, the gateway, the order-service, the inventory-service, the notification-service, the ai-service, Kafka, MailHog (a test mailbox), four PostgreSQL databases and the two React apps (built with Vite and served by nginx).
 
 | Service | Container | URL |
 |---|---|---|
@@ -206,6 +212,8 @@ Docker Compose starts twelve containers: the Node.js backend, the gateway, the o
 | PostgreSQL (orders) | `food-postgres` | internal only, no published port |
 | PostgreSQL (stock) | `food-postgres-inventory` | internal only, no published port |
 | PostgreSQL (notifications) | `food-postgres-notifications` | internal only, no published port |
+| PostgreSQL (AI) | `food-postgres-ai` | internal only, no published port |
+| ai-service | `food-ai-service` | internal only, reached through the gateway at `/api/ai/**` |
 | notification-service | `food-notification-service` | no API; listens to Kafka and sends emails |
 | MailHog | `food-mailhog` | http://localhost:8025 (the test inbox for emails) |
 | Kafka | `food-kafka` | internal only (`kafka:9092`), no published port |
@@ -403,6 +411,74 @@ docker exec food-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-serv
 - **A broken message cannot block the others.** A message that is not a valid event goes straight to the dead letter topic `order-events.notification.DLT`, and so does one that still fails after the retries. The service carries on with the next event.
 - **A new service catches up.** It starts reading from the beginning of the topic, so events that arrived while it was down are not missed. Kafka remembers how far it has read, so a restart sends nothing twice.
 - **New event types do no harm.** Unknown event types and unknown fields are ignored.
+
+---
+
+## 🤖 AI Service
+
+`ai-service` is a small Python (FastAPI) service with two features. Like the notification-service, it never calls order-service: it learns from the order events.
+
+### 1. "Customers also ordered" (recommendations)
+
+The service reads the `order-events` topic and counts, for every dish, in how many **confirmed** orders it appeared and which dishes appeared together (a paid Stripe order, or a cash on delivery order). A quantity does not matter: "2 x pasta" counts once. It has its own consumer group `ai-service`, its own database and its own dead letter topic `order-events.ai.DLT`, and it starts reading from the beginning of the topic, so a new database learns from the whole history.
+
+| Endpoint | Who | What |
+|---|---|---|
+| `GET /api/ai/recommendations?foodIds=a,b&limit=4` | everyone | Dishes most often ordered with the given ones (for example the cart). Topped up with the popular dishes. |
+| `GET /api/ai/recommendations/popular?limit=4` | everyone | The most ordered dishes |
+| `POST /api/ai/chat` | logged in | The chatbot (below) |
+
+Dishes that are sold out or no longer on the menu are never recommended. Counting is safe to repeat: every event id is saved in the same transaction as the counts, so a message that Kafka delivers twice is counted once.
+
+### 2. The chatbot (RAG)
+
+RAG means *retrieval-augmented generation*: the answer is written from real documents that were looked up first, not from what the model remembers.
+
+```
+question -> BM25 search over the menu and the help articles -> relevant text + question -> Claude -> answer + sources
+```
+
+- **The data is live.** The menu comes from the Node backend and the stock from inventory-service (both public endpoints, cached for 30 s). Sold out dishes are marked in the prompt, so the bot does not offer them.
+- **The help articles** are markdown files in `ai-service/app/help_articles/`, cut into pieces at their headings. Edit them and restart to change what the bot knows.
+- **Search** is BM25, written out in `app/search.py` (about 40 lines). It needs no model download and handles English, Hinglish and Hindi words. A small menu (up to 80 dishes) is put in the prompt completely; a bigger one is searched and only the best matches are sent.
+- **Every answer lists its sources** (which dishes and help pages were used).
+- **The bot only answers from the context.** If the answer is not there it says so. It cannot place orders or see anyone's orders. The question is wrapped in tags and cannot close them, and the system prompt tells Claude to treat it as data.
+
+**Works without a key.** Without `ANTHROPIC_API_KEY` the chat still works but answers from search only (matching dishes and help text, `"mode": "search"`). If Claude is configured but fails (network, rate limit, a refusal), the same search answer is returned with `"degraded": true`. The chat never shows an error because Claude is down.
+
+**To turn on Claude**, put the key in a `.env` file in the project root (next to `docker-compose.yml`; it is git ignored) and rebuild:
+
+```bash
+echo ANTHROPIC_API_KEY=your-key-here > .env
+docker compose up -d --build ai-service
+```
+
+`ANTHROPIC_MODEL` chooses the model (default `claude-opus-5-5`). A chat answer is short, so a smaller model such as `claude-haiku-5-5` is much cheaper and fast enough; set it in the same `.env` file. The service uses the official `anthropic` SDK with low reasoning effort.
+
+**Cost control:** a message is limited to 500 characters, only the last 6 turns are sent, and each user may send 20 messages per 10 minutes (`429` after that).
+
+### Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATABASE_URL` | local Postgres | The service's own database |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Where Kafka is (`kafka:9092` in Docker) |
+| `KAFKA_ENABLED` | `true` | `false` turns the event listener off |
+| `CATALOG_URL`, `INVENTORY_URL` | local | Where the menu and the stock come from |
+| `ANTHROPIC_API_KEY` | empty | Empty = search-only chat |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Which Claude model writes the answers |
+| `CHAT_RATE_LIMIT_MESSAGES`, `CHAT_RATE_LIMIT_WINDOW_SECONDS` | `20`, `600` | Messages per user per window |
+
+### Run the tests
+
+```bash
+cd ai-service
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements-dev.txt   # Linux/macOS: .venv/bin/python
+.venv/Scripts/python -m pytest
+```
+
+The tests start a real PostgreSQL with Testcontainers (Docker must be running). Claude is never called: a stand-in is used, so no API key and no cost.
 
 ---
 

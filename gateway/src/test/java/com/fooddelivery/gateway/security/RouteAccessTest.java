@@ -29,6 +29,8 @@ class RouteAccessTest {
             // The menu shows "out of stock" without a login
             "GET,/api/inventory/availability",
             "HEAD,/api/inventory/availability",
+            "GET,/api/ai/recommendations",
+            "GET,/api/ai/recommendations/popular",
     })
     void publicRoutes(String method, String path) {
         assertThat(routes.classify(method, path)).isEqualTo(PUBLIC);
@@ -104,6 +106,13 @@ class RouteAccessTest {
     @Test
     void aPathThatOnlyStartsWithTheWordInternalIsNotBlocked() {
         assertThat(routes.classify("GET", "/internalstuff")).isEqualTo(USER);
+    }
+
+    @Test
+    void theChatbotNeedsALoginButRecommendationsDoNot() {
+        assertThat(routes.classify("POST", "/api/ai/chat")).isEqualTo(USER);
+        assertThat(routes.classify("POST", "/api/ai/recommendations")).isEqualTo(USER);
+        assertThat(routes.classify("GET", "/api/ai/recommendations/other")).isEqualTo(USER);
     }
 
     @Test
