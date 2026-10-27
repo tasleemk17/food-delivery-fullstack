@@ -386,6 +386,8 @@ docker exec food-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-serv
 | `ORDER_PAYMENT_FAILED` | "Payment failed" (says the cart is still saved) |
 | `ORDER_STATUS_CHANGED` | "Your order is Out for delivery" / "Delivered" |
 
+![MailHog inbox with the order emails (recipient addresses hidden)](docs/screenshots/email-inbox.png)
+
 **Nothing real is sent while developing.** In Docker the emails go to **MailHog**, a fake mail server with a web inbox. Open http://localhost:8025 to read them. To send real emails, point `MAIL_HOST` and `MAIL_PORT` (and, for a provider that needs it, the `spring.mail.*` login settings) at a real SMTP server.
 
 **What it guarantees**
