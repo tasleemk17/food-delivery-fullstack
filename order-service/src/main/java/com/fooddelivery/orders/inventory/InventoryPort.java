@@ -17,9 +17,10 @@ public interface InventoryPort {
      */
     void reserve(UUID orderId, List<StockLine> lines);
 
-    /** The order was paid: the stock stays taken. Safe to repeat. */
-    void commit(UUID orderId);
-
-    /** The order will not be paid: put the stock back. Safe to repeat. */
+    /**
+     * Puts the stock back. Used only when saving the order fails right after the stock was held
+     * (then there is no order and no event). In every other case inventory-service gives the stock
+     * back by itself when it reads the ORDER_PAYMENT_FAILED event. Safe to repeat.
+     */
     void release(UUID orderId);
 }

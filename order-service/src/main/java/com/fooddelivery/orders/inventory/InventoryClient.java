@@ -64,14 +64,6 @@ public class InventoryClient implements InventoryPort {
     }
 
     @Override
-    public void commit(UUID orderId) {
-        call("commit stock", () -> client.post()
-                .uri("/internal/inventory/reservations/{orderId}/commit", orderId)
-                .retrieve()
-                .toBodilessEntity());
-    }
-
-    @Override
     public void release(UUID orderId) {
         call("release stock", () -> client.post()
                 .uri("/internal/inventory/reservations/{orderId}/release", orderId)

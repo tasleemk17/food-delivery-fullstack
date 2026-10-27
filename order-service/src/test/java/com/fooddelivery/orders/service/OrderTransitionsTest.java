@@ -79,6 +79,18 @@ class OrderTransitionsTest {
     }
 
     @Test
+    void amountsInTheEventAlwaysHaveTwoDecimals() {
+        // 290 and 120 are whole numbers: a just-created order holds them without decimals
+        OrderEntity order = order(PaymentMethod.COD, OrderStatus.FOOD_PROCESSING);
+        order.setAmount(new BigDecimal("290"));
+
+        transitions.place(order);
+
+        String payload = outbox.findByAggregateIdOrderBySeq(order.getId()).get(0).getPayload();
+        assertThat(payload).contains("\"amount\":290.00", "\"unitPrice\":120.00");
+    }
+
+    @Test
     void theEventLeavesOutTheAddressAndThePhoneNumber() {
         OrderEntity order = order(PaymentMethod.COD, OrderStatus.FOOD_PROCESSING);
 

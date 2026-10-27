@@ -34,10 +34,13 @@ import org.springframework.stereotype.Service;
  * saved, so if Node or inventory-service is down, or a food is out of stock,
  * the caller gets an error and no order row exists.
  *
- * Stock life cycle: reserved when the order is placed, committed when it is
- * paid (COD: straight away), released when payment fails or expires. Commit
- * and release only change the reservation's label, so a failure there is
- * logged and never fails the order.
+ * Stock life cycle: the stock is RESERVED here, in a direct call, because checkout needs
+ * the answer at once. After that it is the order events that move it on: inventory-service
+ * reads ORDER_PAID (and ORDER_PLACED for cash on delivery) and commits the stock, and reads
+ * ORDER_PAYMENT_FAILED and gives it back. Kafka retries those, so a moment when
+ * inventory-service is down can no longer leave the stock wrong.
+ * The one release done here is when saving the order itself fails: then there is no order
+ * and so no event, and the stock that was just held must be given back right away.
  */
 @Service
 public class OrderService {
@@ -64,13 +67,12 @@ public class OrderService {
         this.clock = clock;
     }
 
-    /** Cash on delivery: hold the stock, save the order, confirm the stock, then clear the cart. */
+    /** Cash on delivery: hold the stock, save the order (its event confirms the stock), then clear the cart. */
     public void placeCod(String userId, Address address) {
         PricedOrder priced = priceCart(userId);
         OrderEntity order = newOrder(userId, PaymentMethod.COD, OrderStatus.FOOD_PROCESSING, address, priced);
         reserveStock(order, priced);
-        saveOrReleaseStock(order);
-        commitStockQuietly(order.getId()); // nothing to wait for: cash on delivery is confirmed
+        saveOrReleaseStock(order); // the ORDER_PLACED event tells inventory-service to commit (cash on delivery)
         clearCartQuietly(userId);
     }
 
@@ -88,8 +90,7 @@ public class OrderService {
         try {
             session = payments.createCheckoutSession(order.getId(), lines, PricingService.DELIVERY_CHARGE);
         } catch (RuntimeException e) {
-            transitions.markFailed(order.getId());
-            releaseStockQuietly(order.getId());
+            transitions.markFailed(order.getId()); // its ORDER_PAYMENT_FAILED event gives the stock back
             throw e;
         }
         orders.setStripeSessionId(order.getId(), session.id());
@@ -128,9 +129,8 @@ public class OrderService {
                     .filter(o -> paysFor(session, o))
                     .ifPresent(this::markPaid);
         } else if ("checkout.session.expired".equals(event.type())) {
-            if (transitions.markFailed(orderId)) {
-                releaseStockQuietly(orderId); // nobody will pay: give the stock back
-            }
+            // Nobody will pay. The ORDER_PAYMENT_FAILED event it creates gives the stock back.
+            transitions.markFailed(orderId);
         }
     }
 
@@ -177,10 +177,12 @@ public class OrderService {
         return PaymentRules.sessionPaysForOrder(session, order.getId(), expected);
     }
 
-    /** Only the call that actually flips paid=false to true confirms the stock and clears the cart. */
+    /**
+     * Only the call that actually flips paid=false to true clears the cart (and creates the
+     * ORDER_PAID event that makes inventory-service commit the stock).
+     */
     private void markPaid(OrderEntity order) {
         if (transitions.markPaid(order.getId())) {
-            commitStockQuietly(order.getId());
             clearCartQuietly(order.getUserId());
         }
     }
@@ -218,15 +220,6 @@ public class OrderService {
         } catch (RuntimeException e) {
             releaseStockQuietly(order.getId());
             throw e;
-        }
-    }
-
-    private void commitStockQuietly(UUID orderId) {
-        try {
-            inventory.commit(orderId);
-        } catch (RuntimeException e) {
-            // The order is saved and the stock is already taken; only the label did not change
-            log.warn("Could not commit the stock reservation of order {}: {}", orderId, e.getMessage());
         }
     }
 

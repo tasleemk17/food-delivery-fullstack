@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fooddelivery.orders.domain.OrderEntity;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -37,17 +38,25 @@ public class OrderEventFactory {
         this.clock = clock;
     }
 
+    /**
+     * Always two decimals. An order that was just created still holds 1350 in memory, while one read
+     * back from the database gives 1350.00, so without this the same amount was written two ways.
+     */
+    private static BigDecimal money(BigDecimal value) {
+        return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
     /** The order must have its items loaded. */
     public OutboxEvent create(OrderEventType type, OrderEntity order) {
         UUID eventId = UUID.randomUUID();
         Instant now = Instant.now(clock);
 
         List<Item> items = order.getItems().stream()
-                .map(i -> new Item(i.getFoodId(), i.getName(), i.getQuantity(), i.getUnitPrice()))
+                .map(i -> new Item(i.getFoodId(), i.getName(), i.getQuantity(), money(i.getUnitPrice())))
                 .toList();
         OrderData data = new OrderData(order.getId(), order.getUserId(), order.getAddress().getEmail(),
                 order.getAddress().getFirstName(), order.getPaymentMethod().name(), order.getStatus().name(),
-                order.getStatus().label(), order.isPaid(), order.getAmount(), items, order.getCreatedAt());
+                order.getStatus().label(), order.isPaid(), money(order.getAmount()), items, order.getCreatedAt());
 
         try {
             String json = mapper.writeValueAsString(new Envelope(eventId, type.name(), now, data));
