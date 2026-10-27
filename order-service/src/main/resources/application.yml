@@ -26,6 +26,13 @@ node:
   connect-timeout: 2s
   read-timeout: 3s
 
+# inventory-service: holds stock for an order until it is paid (internal API, shared secret)
+inventory:
+  base-url: ${INVENTORY_BASE_URL:http://localhost:8082}
+  internal-key: ${INTERNAL_API_KEY:}
+  connect-timeout: 2s
+  read-timeout: 3s
+
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}

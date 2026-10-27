@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -16,6 +17,7 @@ import com.fooddelivery.orders.domain.OrderEntity;
 import com.fooddelivery.orders.domain.OrderRepository;
 import com.fooddelivery.orders.domain.OrderStatus;
 import com.fooddelivery.orders.domain.PaymentMethod;
+import com.fooddelivery.orders.inventory.InventoryPort;
 import com.fooddelivery.orders.node.CartPort;
 import com.fooddelivery.orders.node.CartSnapshot;
 import com.fooddelivery.orders.payment.PaymentGateway;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -48,6 +51,7 @@ class OrderServiceTest {
     @Mock OrderRepository orders;
     @Mock CartPort cart;
     @Mock PaymentGateway payments;
+    @Mock InventoryPort inventory;
 
     private OrderService service;
     private static final Address ADDRESS =
@@ -60,7 +64,7 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderService(orders, cart, new PricingService(), payments,
+        service = new OrderService(orders, cart, new PricingService(), payments, inventory,
                 Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
         given(cart.fetchCart("u1")).willReturn(CART);
         given(orders.save(any(OrderEntity.class))).willAnswer(i -> i.getArgument(0));
@@ -110,7 +114,7 @@ class OrderServiceTest {
         given(cart.fetchCart("u1")).willThrow(new UpstreamUnavailableException("down", null));
         assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
         assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
-        verifyNoInteractions(orders, payments);
+        verifyNoInteractions(orders, payments, inventory);
     }
 
     @Test
@@ -232,6 +236,140 @@ class OrderServiceTest {
         service.handleWebhook("b2", "sig");
         service.handleWebhook("b3", "sig");
         verify(orders, never()).markPaidIfUnpaid(any());
+    }
+
+    // --------------------------------------------------------------- stock
+
+    private static final List<InventoryPort.StockLine> SALAD_X2 = List.of(new InventoryPort.StockLine("f1", 2));
+
+    @Test
+    void codHoldsStockBeforeSavingThenConfirmsIt() {
+        service.placeCod("u1", ADDRESS);
+
+        ArgumentCaptor<UUID> reservedFor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<OrderEntity> saved = ArgumentCaptor.forClass(OrderEntity.class);
+        InOrder order = inOrder(inventory, orders);
+        order.verify(inventory).reserve(reservedFor.capture(), eq(SALAD_X2));
+        order.verify(orders).save(saved.capture());
+        order.verify(inventory).commit(saved.getValue().getId());
+        // The reservation is keyed by the id the order is saved with
+        assertThat(reservedFor.getValue()).isEqualTo(saved.getValue().getId());
+    }
+
+    @Test
+    void outOfStockSavesNothingAndNamesTheFood() {
+        doThrow(new OutOfStockException("f1", 0)).when(inventory).reserve(any(), any());
+
+        assertThatThrownBy(() -> service.placeCod("u1", ADDRESS))
+                .isInstanceOfSatisfying(OrderException.class, e -> {
+                    assertThat(e.status().value()).isEqualTo(409);
+                    assertThat(e.getMessage()).startsWith("Salad is out of stock");
+                });
+        assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(OrderException.class);
+
+        verify(orders, never()).save(any());
+        verifyNoInteractions(payments);
+        verify(cart, never()).clearCart(anyString()); // the customer keeps their cart to fix it
+    }
+
+    @Test
+    void whenOnlySomeAreLeftTheMessageSaysHowMany() {
+        doThrow(new OutOfStockException("f1", 1)).when(inventory).reserve(any(), any());
+
+        assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS))
+                .hasMessageStartingWith("Only 1 left of Salad");
+    }
+
+    @Test
+    void inventoryDownMeans503AndNothingIsSaved() {
+        doThrow(new UpstreamUnavailableException("down", null)).when(inventory).reserve(any(), any());
+
+        assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
+        assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(UpstreamUnavailableException.class);
+
+        verify(orders, never()).save(any());
+        verifyNoInteractions(payments);
+    }
+
+    @Test
+    void ifSavingTheOrderFailsTheStockIsGivenBack() {
+        given(orders.save(any(OrderEntity.class))).willThrow(new IllegalStateException("db down"));
+
+        assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(IllegalStateException.class);
+
+        verify(inventory).release(any(UUID.class));
+        verify(inventory, never()).commit(any());
+    }
+
+    @Test
+    void codStillSucceedsIfConfirmingTheStockFails() {
+        doThrow(new UpstreamUnavailableException("down", null)).when(inventory).commit(any());
+
+        service.placeCod("u1", ADDRESS);
+
+        verify(orders).save(any(OrderEntity.class));
+        verify(cart).clearCart("u1");
+    }
+
+    @Test
+    void stripeHoldsStockButDoesNotConfirmItUntilPaid() {
+        given(payments.createCheckoutSession(any(), any(), any()))
+                .willReturn(new PaymentGateway.CheckoutSession("cs_1", "https://stripe/pay"));
+
+        service.placeStripe("u1", ADDRESS);
+
+        verify(inventory).reserve(any(UUID.class), eq(SALAD_X2));
+        verify(inventory, never()).commit(any());
+        verify(inventory, never()).release(any());
+    }
+
+    @Test
+    void ifStripeFailsTheStockIsGivenBack() {
+        given(payments.createCheckoutSession(any(), any(), any()))
+                .willThrow(new PaymentProviderException("boom", null));
+
+        assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(PaymentProviderException.class);
+
+        verify(inventory).release(any(UUID.class));
+    }
+
+    @Test
+    void payingConfirmsTheStockOnlyForTheCallThatWins() {
+        UUID id = UUID.randomUUID();
+        given(orders.findWithItemsById(id)).willReturn(Optional.of(storedOrder(id, true, "cs_1")));
+        given(payments.retrieveSession("cs_1"))
+                .willReturn(new StripeSessionInfo("cs_1", "paid", 29000L, "inr", id.toString()));
+
+        given(orders.markPaidIfUnpaid(id)).willReturn(1);
+        service.verify("u1", id);
+        given(orders.markPaidIfUnpaid(id)).willReturn(0);
+        service.verify("u1", id);
+
+        verify(inventory).commit(id); // exactly once
+    }
+
+    @Test
+    void anExpiredSessionGivesTheStockBack() {
+        UUID id = UUID.randomUUID();
+        StripeSessionInfo s = new StripeSessionInfo("cs_1", "unpaid", 29000L, "inr", id.toString());
+        given(payments.parseWebhook("b1", "sig")).willReturn(new WebhookEvent("e1", "checkout.session.expired", s));
+        given(orders.markFailedIfUnpaid(id)).willReturn(1);
+
+        service.handleWebhook("b1", "sig");
+
+        verify(inventory).release(id);
+    }
+
+    @Test
+    void anExpiredSessionOfAnOrderThatWasAlreadyPaidKeepsTheStock() {
+        UUID id = UUID.randomUUID();
+        StripeSessionInfo s = new StripeSessionInfo("cs_1", "unpaid", 29000L, "inr", id.toString());
+        given(payments.parseWebhook("b1", "sig")).willReturn(new WebhookEvent("e1", "checkout.session.expired", s));
+        given(orders.markFailedIfUnpaid(id)).willReturn(0); // paid already: nothing was marked failed
+
+        service.handleWebhook("b1", "sig");
+
+        verify(inventory, never()).release(any());
     }
 
     // -------------------------------------------------------------- status

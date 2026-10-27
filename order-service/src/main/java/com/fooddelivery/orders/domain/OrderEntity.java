@@ -6,12 +6,13 @@ import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -19,18 +20,26 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.data.domain.Persistable;
 
 /**
  * An order and its items. Items are only added through addItem(), so an
  * item can never exist without its order or with a bad quantity or price.
+ *
+ * The id is created here, before the order is saved. That lets the order hold
+ * its stock reservation (which is keyed by this id) first, so an order that is
+ * rejected for lack of stock never gets a database row at all.
  */
 @Entity
 @Table(name = "orders")
-public class OrderEntity {
+public class OrderEntity implements Persistable<UUID> {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    // Tells Spring Data that this object is new (INSERT), not an existing row (merge)
+    @Transient
+    private boolean isNew = true;
 
     @Column(name = "legacy_id", unique = true, length = 24)
     private String legacyId;
@@ -72,6 +81,12 @@ public class OrderEntity {
 
     public OrderEntity(String userId, PaymentMethod paymentMethod, OrderStatus status,
                        Address address, Instant createdAt) {
+        this(UUID.randomUUID(), userId, paymentMethod, status, address, createdAt);
+    }
+
+    public OrderEntity(UUID id, String userId, PaymentMethod paymentMethod, OrderStatus status,
+                       Address address, Instant createdAt) {
+        this.id = Objects.requireNonNull(id, "id");
         this.userId = Objects.requireNonNull(userId, "userId");
         this.paymentMethod = Objects.requireNonNull(paymentMethod, "paymentMethod");
         this.status = Objects.requireNonNull(status, "status");
@@ -100,7 +115,16 @@ public class OrderEntity {
         this.legacyId = legacyId;
     }
 
+    @Override
     public UUID getId() { return id; }
+
+    @Override
+    public boolean isNew() { return isNew; }
+
+    @PostPersist
+    @PostLoad
+    void markNotNew() { this.isNew = false; }
+
     public String getLegacyId() { return legacyId; }
     public String getUserId() { return userId; }
     public BigDecimal getAmount() { return amount; }

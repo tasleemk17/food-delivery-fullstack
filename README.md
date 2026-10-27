@@ -304,7 +304,9 @@ Some tests use Testcontainers, so Docker must be running.
 | `NODE_BASE_URL` | order-service | Address of the Node backend |
 | `INTERNAL_API_KEY` | backend, order-service | Shared key for internal endpoints |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | order-service | Stripe payments |
+| `INVENTORY_BASE_URL` | order-service | Address of inventory-service (stock reservations) |
 | `NODE_BACKEND_URL` | gateway | Where the gateway forwards requests |
+| `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL` | gateway | Where the gateway sends `/api/order/**` and `/api/inventory/**` |
 
 ---
 
@@ -320,7 +322,14 @@ Some tests use Testcontainers, so Docker must be running.
 - **Public API:** `GET /api/inventory/availability` returns `{ foodId: true/false }` for the menu, without exposing quantities.
 - **Internal API:** `/internal/**` needs the shared `X-Internal-Key` (`INTERNAL_API_KEY`), and the gateway never routes it from outside.
 
-Order-service does not call it yet; that connection comes next, followed by events.
+### How orders use it
+
+1. **Placing an order:** order-service reserves the stock first. If a food is short, the customer gets `409` with a clear message ("Salad is out of stock" or "Only 1 left of Salad"), no order is saved, and the cart is kept so it can be fixed.
+2. **Paid:** when Stripe confirms payment (webhook or the return page), the reservation is committed. Cash on delivery is committed straight away.
+3. **Payment failed or expired:** the reservation is released and the stock goes back. Stripe sessions last 35 minutes, so unpaid orders do not hold stock for long.
+4. **If inventory-service is down**, placing an order fails with `503` and nothing is saved, so stock can never be oversold.
+
+Commit and release only change the reservation's label, so a failure there is logged and never fails an order.
 
 ---
 
