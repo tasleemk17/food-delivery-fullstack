@@ -322,6 +322,7 @@ Some tests use Testcontainers, so Docker must be running.
 - **Admin API (through the gateway, admin only):** `GET /api/inventory` lists stock, `PUT /api/inventory/{foodId}` with `{"quantity": 10}` sets it, and `DELETE /api/inventory/{foodId}` stops tracking the food (it is always available again).
 - **Admin panel:** the **Stock** page lists every food with a status badge (not tracked, in stock, low, out of stock), a field to type the units, and Save / Stop tracking buttons.
 - **Public API:** `GET /api/inventory/availability` returns `{ foodId: true/false }` for the menu, without exposing quantities.
+- **Customer menu:** a food with no units left shows a grey picture and an "Out of stock" badge and cannot be added. If it is already in the cart, the cart marks it and it can be removed. The menu looks again when the browser tab is shown, and checkout still checks the stock on the server.
 - **Internal API:** `/internal/**` needs the shared `X-Internal-Key` (`INTERNAL_API_KEY`), and the gateway never routes it from outside.
 
 ### How orders use it

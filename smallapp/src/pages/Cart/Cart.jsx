@@ -8,6 +8,7 @@ const Cart = () => {
     cartItems,
     food_list,
     removeFromCart,
+    isOutOfStock,
     getTotalCartAmount,
     url,
     currency,
@@ -30,7 +31,12 @@ const Cart = () => {
               <div key={index}>
                 <div className="cart-items-title cart-items-item">
                   <img src={url + "/images/" + item.image} alt="" />
-                  <p>{item.name}</p>
+                  <p>
+                    {item.name}
+                    {isOutOfStock(item._id) && (
+                      <span className="cart-items-soldout"> Out of stock, please remove</span>
+                    )}
+                  </p>
                   <p>
                     {currency}
                     {item.price}
