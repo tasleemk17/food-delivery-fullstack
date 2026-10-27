@@ -2,6 +2,7 @@ import React, { useContext } from "react";
 import "./Cart.css";
 import { StoreContext } from "../../context/StoreContext";
 import { useNavigate } from "react-router-dom";
+import AlsoOrdered from "../../components/AlsoOrdered/AlsoOrdered";
 
 const Cart = () => {
   const {
@@ -59,6 +60,7 @@ const Cart = () => {
           }
         })}
       </div>
+      <AlsoOrdered />
       <div className="cart-bottom">
         <div className="cart-total">
           <h2>Cart Totals</h2>

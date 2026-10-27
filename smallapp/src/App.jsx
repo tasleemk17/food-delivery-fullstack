@@ -11,6 +11,7 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Verify from "./pages/Verify/Verify";
 import MyOrders from "./pages/MyOrders/MyOrders";
+import ChatWidget from "./components/ChatWidget/ChatWidget";
 
 const App = () => {
   const [showLogin, setShowLogin] = useState(false);
@@ -28,6 +29,7 @@ const App = () => {
           <Route path="/verify" element={<Verify />} />
         </Routes>
       </div>
+      <ChatWidget setShowLogin={setShowLogin} />
       <Footer />
     </>
   );
