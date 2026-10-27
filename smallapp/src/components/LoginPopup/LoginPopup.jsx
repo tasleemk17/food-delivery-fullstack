@@ -2,10 +2,11 @@ import React, { useContext, useState } from "react";
 import "./LoginPopup.css";
 import { assets } from "../../assets/assets";
 import { StoreContext } from "../../context/StoreContext";
-import axios from "axios";
+import api from "../../api";
+import { toast } from "react-toastify";
 
 const LoginPopup = ({ setShowLogin }) => {
-  const { setToken, url, loadCartData } = useContext(StoreContext);
+  const { setToken, loadCartData } = useContext(StoreContext);
   const [currState, setCurrState] = useState("Sign Up");
 
   const [data, setData] = useState({
@@ -23,13 +24,9 @@ const LoginPopup = ({ setShowLogin }) => {
   const onLogin = async (e) => {
     e.preventDefault();
 
-    let new_url = url;
-    if (currState === "Login") {
-      new_url += "/api/user/login";
-    } else {
-      new_url += "/api/user/register";
-    }
-    const response = await axios.post(new_url, data);
+    const path = currState === "Login" ? "/api/user/login" : "/api/user/register";
+    // api.js does not throw on 4xx, so a wrong password reaches the toast below
+    const response = await api.post(path, data);
     if (response.data.success) {
       setToken(response.data.token);
       localStorage.setItem("token", response.data.token);

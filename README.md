@@ -500,6 +500,7 @@ The unit and integration tests of each service run in CI. The `e2e` folder adds 
 | Sign up, order (COD), My Orders | the full customer flow, and that the confirmation email reached MailHog (order -> Kafka -> notification-service) |
 | Cart suggestions | "Customers also ordered" appears and its Add button works |
 | Assistant answer | a logged in customer gets an answer with sources |
+| Wrong password | an error message is shown and the visitor stays logged out |
 | Gateway security (5 tests) | public routes open, private routes need a login, a forged token is rejected, admin and `/internal` routes are closed |
 
 ```bash
