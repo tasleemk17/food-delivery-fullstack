@@ -26,6 +26,9 @@ public class RouteAccess {
             "POST /api/user/login",
             "POST /api/user/register",
             "GET /api/food/list",
+            // "Customers also ordered": the same for everyone, no personal data
+            "GET /api/ai/recommendations",
+            "GET /api/ai/recommendations/popular",
             // Stripe calls this server-to-server; the backend checks Stripe's signature
             "POST /api/order/webhook");
 

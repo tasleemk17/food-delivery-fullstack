@@ -1,4 +1,4 @@
-# Node backend, API gateway, order-service, inventory-service, notification-service, Kafka, MailHog, their PostgreSQL databases and the two React apps.
+# Node backend, API gateway, order-service, inventory-service, notification-service, ai-service, Kafka, MailHog, their PostgreSQL databases and the two React apps.
 # Start:  docker compose up -d --build
 # Stop:   docker compose down          (add -v to also delete the PostgreSQL data)
 #
@@ -35,6 +35,7 @@ services:
       NODE_BACKEND_URL: http://backend:4000
       ORDER_SERVICE_URL: http://order-service:8081
       INVENTORY_SERVICE_URL: http://inventory-service:8082
+      AI_SERVICE_URL: http://ai-service:8000
       FRONTEND_URL: http://localhost:5173
       ADMIN_URL: http://localhost:5174
     ports:
@@ -46,6 +47,8 @@ services:
       order-service:
         condition: service_started
       inventory-service:
+        condition: service_started
+      ai-service:
         condition: service_started
     mem_limit: 512m
     restart: unless-stopped
@@ -125,6 +128,45 @@ services:
     # No ports: reached only through the gateway (/api/inventory) or by order-service
     depends_on:
       postgres-inventory:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    mem_limit: 512m
+    restart: unless-stopped
+
+  postgres-ai:
+    image: postgres:16-alpine
+    container_name: food-postgres-ai
+    environment:
+      POSTGRES_DB: ai
+      POSTGRES_USER: ai
+      # Local development password. Set AI_DB_PASSWORD in a root .env file to change it.
+      POSTGRES_PASSWORD: ${AI_DB_PASSWORD:-ai_local_pw}
+    volumes:
+      - ai-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai -d ai"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No ports: only ai-service talks to the database, over the Docker network
+    restart: unless-stopped
+
+  # Recommendations ("customers also ordered", learned from the order events) and the menu chatbot.
+  # The chatbot answers from search alone until ANTHROPIC_API_KEY is set in a root .env file.
+  ai-service:
+    build: ./ai-service
+    container_name: food-ai-service
+    environment:
+      DATABASE_URL: postgresql://ai:${AI_DB_PASSWORD:-ai_local_pw}@postgres-ai:5432/ai
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CATALOG_URL: http://backend:4000
+      INVENTORY_URL: http://inventory-service:8082
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+    # No ports: reached only through the gateway (/api/ai), which checks the login and sets X-User-Id
+    depends_on:
+      postgres-ai:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -243,5 +285,6 @@ services:
 volumes:
   orders-data:
   inventory-data:
+  ai-data:
   notifications-data:
   kafka-data:

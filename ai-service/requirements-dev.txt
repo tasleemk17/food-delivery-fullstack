@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8
+# Real PostgreSQL in Docker for the database tests
+testcontainers[postgres]>=4.8

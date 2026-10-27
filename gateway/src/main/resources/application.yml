@@ -21,6 +21,12 @@ spring:
           predicates:
             - Path=/api/inventory/**
 
+        # Recommendations ("customers also ordered") and the menu chatbot.
+        - id: ai-service
+          uri: ${AI_SERVICE_URL:http://localhost:8000}
+          predicates:
+            - Path=/api/ai/**
+
         # Everything else goes to the Node backend.
         - id: node-backend
           uri: ${NODE_BACKEND_URL:http://localhost:4000}
