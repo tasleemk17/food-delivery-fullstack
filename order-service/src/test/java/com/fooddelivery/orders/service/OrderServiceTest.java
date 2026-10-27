@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -243,7 +244,7 @@ class OrderServiceTest {
     private static final List<InventoryPort.StockLine> SALAD_X2 = List.of(new InventoryPort.StockLine("f1", 2));
 
     @Test
-    void codHoldsStockBeforeSavingThenConfirmsIt() {
+    void codHoldsStockBeforeSavingTheOrder() {
         service.placeCod("u1", ADDRESS);
 
         ArgumentCaptor<UUID> reservedFor = ArgumentCaptor.forClass(UUID.class);
@@ -251,9 +252,10 @@ class OrderServiceTest {
         InOrder order = inOrder(inventory, transitions);
         order.verify(inventory).reserve(reservedFor.capture(), eq(SALAD_X2));
         order.verify(transitions).place(saved.capture());
-        order.verify(inventory).commit(saved.getValue().getId());
         // The reservation is keyed by the id the order is saved with
         assertThat(reservedFor.getValue()).isEqualTo(saved.getValue().getId());
+        // Confirming the stock is not done here: the ORDER_PLACED event makes inventory-service do it
+        verify(inventory, never()).release(any());
     }
 
     @Test
@@ -297,44 +299,45 @@ class OrderServiceTest {
 
         assertThatThrownBy(() -> service.placeCod("u1", ADDRESS)).isInstanceOf(IllegalStateException.class);
 
+        // No order was saved, so there is no event: this is the one release done directly
         verify(inventory).release(any(UUID.class));
-        verify(inventory, never()).commit(any());
     }
 
     @Test
-    void codStillSucceedsIfConfirmingTheStockFails() {
-        doThrow(new UpstreamUnavailableException("down", null)).when(inventory).commit(any());
+    void ifGivingTheStockBackAlsoFailsTheOriginalErrorIsStillTheOneReported() {
+        doThrow(new IllegalStateException("db down")).when(transitions).place(any(OrderEntity.class));
+        doThrow(new UpstreamUnavailableException("inventory down", null)).when(inventory).release(any());
 
-        service.placeCod("u1", ADDRESS);
-
-        verify(transitions).place(any(OrderEntity.class));
-        verify(cart).clearCart("u1");
+        assertThatThrownBy(() -> service.placeCod("u1", ADDRESS))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("db down");
     }
 
     @Test
-    void stripeHoldsStockButDoesNotConfirmItUntilPaid() {
+    void stripeHoldsStockAndLeavesItToTheEventsToConfirmOrReleaseIt() {
         given(payments.createCheckoutSession(any(), any(), any()))
                 .willReturn(new PaymentGateway.CheckoutSession("cs_1", "https://stripe/pay"));
 
         service.placeStripe("u1", ADDRESS);
 
         verify(inventory).reserve(any(UUID.class), eq(SALAD_X2));
-        verify(inventory, never()).commit(any());
         verify(inventory, never()).release(any());
     }
 
     @Test
-    void ifStripeFailsTheStockIsGivenBack() {
+    void ifStripeFailsTheOrderIsMarkedFailedAndItsEventGivesTheStockBack() {
         given(payments.createCheckoutSession(any(), any(), any()))
                 .willThrow(new PaymentProviderException("boom", null));
 
         assertThatThrownBy(() -> service.placeStripe("u1", ADDRESS)).isInstanceOf(PaymentProviderException.class);
 
-        verify(inventory).release(any(UUID.class));
+        // Marking it failed makes the ORDER_PAYMENT_FAILED event; inventory-service reads it and releases the stock
+        verify(transitions).markFailed(any(UUID.class));
+        verify(inventory, never()).release(any());
     }
 
     @Test
-    void payingConfirmsTheStockOnlyForTheCallThatWins() {
+    void payingClearsTheCartOnlyForTheCallThatWinsAndNeverTouchesTheStockDirectly() {
         UUID id = UUID.randomUUID();
         given(orders.findWithItemsById(id)).willReturn(Optional.of(storedOrder(id, true, "cs_1")));
         given(payments.retrieveSession("cs_1"))
@@ -345,31 +348,21 @@ class OrderServiceTest {
         given(transitions.markPaid(id)).willReturn(false);
         service.verify("u1", id);
 
-        verify(inventory).commit(id); // exactly once
+        verify(cart, times(1)).clearCart("u1");
+        // The ORDER_PAID event (made inside markPaid) tells inventory-service to commit
+        verifyNoInteractions(inventory);
     }
 
     @Test
-    void anExpiredSessionGivesTheStockBack() {
+    void anExpiredSessionMarksTheOrderFailedAndLeavesTheStockToItsEvent() {
         UUID id = UUID.randomUUID();
         StripeSessionInfo s = new StripeSessionInfo("cs_1", "unpaid", 29000L, "inr", id.toString());
         given(payments.parseWebhook("b1", "sig")).willReturn(new WebhookEvent("e1", "checkout.session.expired", s));
-        given(transitions.markFailed(id)).willReturn(true);
 
         service.handleWebhook("b1", "sig");
 
-        verify(inventory).release(id);
-    }
-
-    @Test
-    void anExpiredSessionOfAnOrderThatWasAlreadyPaidKeepsTheStock() {
-        UUID id = UUID.randomUUID();
-        StripeSessionInfo s = new StripeSessionInfo("cs_1", "unpaid", 29000L, "inr", id.toString());
-        given(payments.parseWebhook("b1", "sig")).willReturn(new WebhookEvent("e1", "checkout.session.expired", s));
-        given(transitions.markFailed(id)).willReturn(false); // paid already: nothing was marked failed
-
-        service.handleWebhook("b1", "sig");
-
-        verify(inventory, never()).release(any());
+        verify(transitions).markFailed(id);
+        verifyNoInteractions(inventory);
     }
 
     // -------------------------------------------------------------- status

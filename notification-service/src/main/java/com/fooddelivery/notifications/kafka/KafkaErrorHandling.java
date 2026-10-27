@@ -16,7 +16,7 @@ import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
  *   30 s apart, 8 times. Messages behind it wait, so the order of events is kept.
  * - A message that can never work (not valid JSON, no eventId, a bad email address): no
  *   point retrying, it goes straight to the dead letter topic.
- * - Once the retries run out the message is moved to "order-events.DLT" and the service
+ * - Once the retries run out the message is moved to "order-events.notification.DLT" and the service
  *   carries on with the next one, so one bad message can never block everything behind it.
  *   Someone can look at the dead letter topic and replay the message later.
  */
@@ -33,11 +33,12 @@ class KafkaErrorHandling {
         backOff.setMultiplier(2.0);
         backOff.setMaxInterval(maxMs);
 
-        // Parks the failed message on "<topic>.DLT". The name is spelled out here because Spring Kafka's
-        // own default changed between versions ("-dlt" now). Partition -1: the producer picks one from the
-        // key, so it does not matter how many partitions the dead letter topic has.
+        // Parks the failed message on "<topic>.notification.DLT". The name is spelled out here because Spring
+        // Kafka's own default changed between versions ("-dlt" now), and because it names this service, so a person
+        // can tell whose failure it is (inventory-service has its own). Partition -1: the producer picks one from
+        // the key, so it does not matter how many partitions the dead letter topic has.
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafka,
-                (record, exception) -> new TopicPartition(record.topic() + ".DLT", -1));
+                (record, exception) -> new TopicPartition(record.topic() + ".notification.DLT", -1));
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
         handler.addNotRetryableExceptions(IllegalArgumentException.class);
         return handler;

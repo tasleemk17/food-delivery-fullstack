@@ -25,7 +25,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 
 /** Runs against a real PostgreSQL (Testcontainers), because the point is what the database guarantees. */
-@SpringBootTest
+// The Kafka listener is switched off: these tests are about the database, not about events
+@SpringBootTest(properties = "spring.kafka.listener.auto-startup=false")
 @Import(TestcontainersConfiguration.class)
 class InventoryServiceTest {
 

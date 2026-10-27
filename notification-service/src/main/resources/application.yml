@@ -37,7 +37,7 @@ notifications:
   mail-from: "Tomato <orders@tomato.local>"
   retry:
     # A failed email is tried again after 1 s, 2 s, 4 s ... (at most 30 s apart), 8 times,
-    # then the message is parked on order-events.DLT so it never blocks the events behind it
+    # then the message is parked on order-events.notification.DLT so it never blocks the events behind it
     initial-ms: 1000
     max-ms: 30000
     max-retries: 8

@@ -85,7 +85,7 @@ class NotificationKafkaTest {
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         List<String> seen = new ArrayList<>();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(config)) {
-            consumer.subscribe(List.of("order-events.DLT"));
+            consumer.subscribe(List.of("order-events.notification.DLT"));
             long deadline = System.currentTimeMillis() + 20_000;
             while (System.currentTimeMillis() < deadline) {
                 for (ConsumerRecord<String, String> r : consumer.poll(Duration.ofMillis(500))) {

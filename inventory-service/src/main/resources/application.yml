@@ -14,11 +14,37 @@ spring:
       ddl-auto: validate
     # Database work happens only inside the service layer, never while writing the HTTP response
     open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      # Kafka remembers how far this service has read. A new group starts from the beginning
+      # (earliest), so events that arrived while it was down are not missed. Repeating an
+      # old event is harmless: committing or releasing the same reservation again changes nothing.
+      group-id: inventory-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      # Only used to park messages that cannot be processed (the "dead letter" topic)
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
 
 # Shared secret that other services (order-service) send in X-Internal-Key.
 # Empty means the /internal routes are switched off (503).
 internal:
   key: ${INTERNAL_API_KEY:}
+
+# Order events (published by order-service) that decide what happens to reserved stock
+inventory-events:
+  topic: order-events
+  retry:
+    # A failed update is tried again after 1 s, 2 s, 4 s ... (at most 30 s apart), 8 times,
+    # then the message is parked on order-events.inventory.DLT so it never blocks the events behind it
+    initial-ms: 1000
+    max-ms: 30000
+    max-retries: 8
 
 management:
   endpoints:

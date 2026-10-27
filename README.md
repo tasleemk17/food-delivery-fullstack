@@ -316,7 +316,7 @@ Some tests use Testcontainers, so Docker must be running.
 | `INTERNAL_API_KEY` | backend, order-service | Shared key for internal endpoints |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | order-service | Stripe payments |
 | `INVENTORY_BASE_URL` | order-service | Address of inventory-service (stock reservations) |
-| `KAFKA_BOOTSTRAP_SERVERS` | order-service, notification-service | Where Kafka is (`kafka:9092` in Docker) |
+| `KAFKA_BOOTSTRAP_SERVERS` | order-service, inventory-service, notification-service | Where Kafka is (`kafka:9092` in Docker) |
 | `MAIL_HOST`, `MAIL_PORT` | notification-service | The SMTP server for emails (`mailhog`, `1025` in Docker) |
 | `NODE_BACKEND_URL` | gateway | Where the gateway forwards requests |
 | `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL` | gateway | Where the gateway sends `/api/order/**` and `/api/inventory/**` |
@@ -339,12 +339,15 @@ Some tests use Testcontainers, so Docker must be running.
 
 ### How orders use it
 
-1. **Placing an order:** order-service reserves the stock first. If a food is short, the customer gets `409` with a clear message ("Salad is out of stock" or "Only 1 left of Salad"), no order is saved, and the cart is kept so it can be fixed.
-2. **Paid:** when Stripe confirms payment (webhook or the return page), the reservation is committed. Cash on delivery is committed straight away.
-3. **Payment failed or expired:** the reservation is released and the stock goes back. Stripe sessions last 35 minutes, so unpaid orders do not hold stock for long.
-4. **If inventory-service is down**, placing an order fails with `503` and nothing is saved, so stock can never be oversold.
+1. **Placing an order (a direct call):** order-service reserves the stock first, because checkout needs the answer at once. If a food is short, the customer gets `409` with a clear message ("Salad is out of stock" or "Only 1 left of Salad"), no order is saved, and the cart is kept so it can be fixed. If inventory-service is down, placing an order fails with `503` and nothing is saved, so stock can never be oversold.
+2. **Paid (an event):** order-service publishes `ORDER_PAID` (or `ORDER_PLACED` for cash on delivery) and inventory-service **commits** the reservation when it reads it.
+3. **Payment failed or expired (an event):** order-service publishes `ORDER_PAYMENT_FAILED` and inventory-service **releases** the reservation, so the stock goes back. Stripe sessions last 35 minutes, so unpaid orders do not hold stock for long.
 
-Commit and release only change the reservation's label, so a failure there is logged and never fails an order.
+Steps 2 and 3 go through Kafka on purpose. If inventory-service is down or restarting at that moment, the event simply waits and is handled when it is back, so the stock can never end up wrong because of a short outage. (Before, a failed direct call was only logged.)
+
+- **Safe to repeat:** commit and release can be applied twice with the same result, so it does not matter that Kafka may deliver an event twice or that the whole topic is read again. An order with no reservation (all its foods untracked) is simply left alone.
+- **Contradictions are parked, not guessed:** for example a payment that arrives after the stock was already given back. Retrying cannot fix that and a person must decide, so the event goes to the dead letter topic `order-events.inventory.DLT` and an error is logged. The events behind it carry on.
+- The one release order-service still does itself is when saving the order fails right after the stock was held. Then there is no order and so no event.
 
 ---
 
@@ -367,6 +370,9 @@ Each message is JSON with a unique `eventId` and everything a listener needs (or
 - A publisher sends the saved events to Kafka about once a second and marks each one sent only after Kafka confirms it (`acks=all`, idempotent producer). If it crashes in between, the event is sent again, so listeners must handle the same `eventId` twice.
 - If Kafka is down, **orders keep working**. The events wait in the table, oldest first, and go out by themselves when Kafka is back.
 - Only a real change makes an event: repeating a payment notification or choosing the status an order already has sends nothing.
+- Amounts always have two decimals (`1350.00`), whether the order was just created or read back from the database.
+
+**Who listens:** `notification-service` (emails the customer) and `inventory-service` (commits or releases the reserved stock). Each has its own consumer group, so each reads every event, and each has its own dead letter topic (`order-events.notification.DLT`, `order-events.inventory.DLT`).
 
 To watch the events (Windows Command Prompt; in Git Bash put `MSYS_NO_PATHCONV=1` in front):
 
@@ -394,7 +400,7 @@ docker exec food-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-serv
 
 - **Each event sends at most one email.** Kafka may deliver a message twice, so every email is recorded with its unique `eventId` in the service's own database, and a repeated event is recognised and ignored.
 - **A failed email is not lost.** The record and the sending happen in one transaction. If the mail server is down, the record is rolled back and the message is retried after 1 s, 2 s, 4 s ... (at most 30 s apart, 8 times).
-- **A broken message cannot block the others.** A message that is not a valid event goes straight to the dead letter topic `order-events.DLT`, and so does one that still fails after the retries. The service carries on with the next event.
+- **A broken message cannot block the others.** A message that is not a valid event goes straight to the dead letter topic `order-events.notification.DLT`, and so does one that still fails after the retries. The service carries on with the next event.
 - **A new service catches up.** It starts reading from the beginning of the topic, so events that arrived while it was down are not missed. Kafka remembers how far it has read, so a restart sends nothing twice.
 - **New event types do no harm.** Unknown event types and unknown fields are ignored.
 

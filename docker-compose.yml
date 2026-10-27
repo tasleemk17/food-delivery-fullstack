@@ -120,9 +120,13 @@ services:
       DB_URL: jdbc:postgresql://postgres-inventory:5432/inventory
       DB_USER: inventory
       DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_local_pw}
+      # It reads the order events: a paid order commits its stock, a failed payment gives it back
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     # No ports: reached only through the gateway (/api/inventory) or by order-service
     depends_on:
       postgres-inventory:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     mem_limit: 512m
     restart: unless-stopped

@@ -38,7 +38,9 @@ class InventoryClientTest {
     void start() {
         inventory = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         inventory.start();
-        client = clientFor("http://localhost:" + inventory.port(), Duration.ofMillis(500));
+        // A generous timeout: the very first request in a fresh JVM can take a while on a busy machine,
+        // and that is not what these tests are about. The timeout tests below use a short one on purpose.
+        client = clientFor("http://localhost:" + inventory.port(), Duration.ofSeconds(5));
     }
 
     @AfterEach
@@ -82,12 +84,12 @@ class InventoryClientTest {
 
     @Test
     void aConflictThatIsNotAboutStockKeepsItsMessage() {
-        inventory.stubFor(post(urlEqualTo(RESERVE + "/" + ORDER + "/commit")).willReturn(aResponse()
+        inventory.stubFor(post(urlEqualTo(RESERVE + "/" + ORDER + "/release")).willReturn(aResponse()
                 .withStatus(409)
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"success\":false,\"message\":\"This reservation was already released\"}")));
 
-        assertThatThrownBy(() -> client.commit(ORDER))
+        assertThatThrownBy(() -> client.release(ORDER))
                 .isInstanceOfSatisfying(OrderException.class, e -> {
                     assertThat(e).isNotInstanceOf(OutOfStockException.class);
                     assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT);
@@ -105,16 +107,13 @@ class InventoryClientTest {
     }
 
     @Test
-    void commitAndReleaseCallTheRightPaths() {
-        inventory.stubFor(post(urlEqualTo(RESERVE + "/" + ORDER + "/commit")).willReturn(aResponse().withStatus(200)));
+    void releaseCallsTheRightPathWithTheInternalKey() {
         inventory.stubFor(post(urlEqualTo(RESERVE + "/" + ORDER + "/release")).willReturn(aResponse().withStatus(200)));
 
-        client.commit(ORDER);
         client.release(ORDER);
 
-        inventory.verify(postRequestedFor(urlEqualTo(RESERVE + "/" + ORDER + "/commit"))
+        inventory.verify(postRequestedFor(urlEqualTo(RESERVE + "/" + ORDER + "/release"))
                 .withHeader("X-Internal-Key", equalTo("secret-key")));
-        inventory.verify(postRequestedFor(urlEqualTo(RESERVE + "/" + ORDER + "/release")));
     }
 
     @Test
@@ -146,8 +145,9 @@ class InventoryClientTest {
     @Test
     void aSlowInventoryServiceTimesOutAs503() {
         inventory.stubFor(post(urlEqualTo(RESERVE)).willReturn(aResponse().withFixedDelay(2000).withStatus(200)));
+        InventoryClient impatient = clientFor("http://localhost:" + inventory.port(), Duration.ofMillis(300));
 
-        assertThatThrownBy(() -> client.reserve(ORDER, List.of(new StockLine("f1", 1))))
+        assertThatThrownBy(() -> impatient.reserve(ORDER, List.of(new StockLine("f1", 1))))
                 .isInstanceOf(UpstreamUnavailableException.class);
     }
 
@@ -157,6 +157,6 @@ class InventoryClientTest {
 
         assertThatThrownBy(() -> nobodyHome.reserve(ORDER, List.of(new StockLine("f1", 1))))
                 .isInstanceOf(UpstreamUnavailableException.class);
-        assertThatThrownBy(() -> nobodyHome.commit(ORDER)).isInstanceOf(UpstreamUnavailableException.class);
+        assertThatThrownBy(() -> nobodyHome.release(ORDER)).isInstanceOf(UpstreamUnavailableException.class);
     }
 }
