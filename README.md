@@ -559,6 +559,10 @@ Stripe payments are verified on the backend before marking an order as paid.
 
 ![Menu with categories and dishes](docs/screenshots/menu.jpg)
 
+**Out of stock** (a food with no units left is greyed out and cannot be added)
+
+![Menu with two foods marked Out of stock](docs/screenshots/out-of-stock-menu.png)
+
 **Cart**
 
 ![Cart with totals and delivery fee](docs/screenshots/cart.jpg)
@@ -566,6 +570,10 @@ Stripe payments are verified on the backend before marking an order as paid.
 **Payment** (Stripe Checkout in test mode)
 
 ![Stripe Checkout page in test mode](docs/screenshots/stripe-checkout.jpg)
+
+**Stock check at checkout** (order-service asks inventory-service to hold the stock first; the delivery form is left out of this screenshot)
+
+![Message when only 2 units are left](docs/screenshots/stock-check-checkout.png)
 
 **My Orders** (orders are stored by order-service in PostgreSQL)
 
