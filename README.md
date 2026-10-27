@@ -83,7 +83,7 @@ The project also includes a separate **Admin Panel** for managing food items and
 ### Services
 
 - Spring Boot API gateway (verifies the JWT and forwards requests)
-- Spring Boot order-service and inventory-service (Java 17, Spring Data JPA, Flyway)
+- Spring Boot order-service, inventory-service and notification-service (Java 17, Spring Data JPA, Flyway)
 
 ### Database
 
@@ -93,6 +93,7 @@ The project also includes a separate **Admin Panel** for managing food items and
 ### Messaging
 
 - Apache Kafka (KRaft mode) for order events, sent with the transactional outbox pattern
+- MailHog as the test mailbox for emails during development
 
 ### Payment
 
@@ -141,6 +142,7 @@ food-delivery-fullstack/
 │
 ├── order-service/           # Spring Boot order service + PostgreSQL
 ├── inventory-service/       # Spring Boot stock service + its own PostgreSQL
+├── notification-service/    # Spring Boot: reads order events from Kafka, sends emails
 │   ├── src/
 │   ├── pom.xml
 │   └── Dockerfile
@@ -191,7 +193,7 @@ Add `stripe` to also start the Stripe webhook forwarder: `start-dev.bat stripe`.
 
 ## 🐳 Run Everything with Docker
 
-Docker Compose starts nine containers: the Node.js backend, the gateway, the order-service, the inventory-service, Kafka, two PostgreSQL databases and the two React apps (built with Vite and served by nginx).
+Docker Compose starts twelve containers: the Node.js backend, the gateway, the order-service, the inventory-service, the notification-service, Kafka, MailHog (a test mailbox), three PostgreSQL databases and the two React apps (built with Vite and served by nginx).
 
 | Service | Container | URL |
 |---|---|---|
@@ -203,6 +205,9 @@ Docker Compose starts nine containers: the Node.js backend, the gateway, the ord
 | inventory-service | `food-inventory-service` | internal only, reached through the gateway at `/api/inventory/**` |
 | PostgreSQL (orders) | `food-postgres` | internal only, no published port |
 | PostgreSQL (stock) | `food-postgres-inventory` | internal only, no published port |
+| PostgreSQL (notifications) | `food-postgres-notifications` | internal only, no published port |
+| notification-service | `food-notification-service` | no API; listens to Kafka and sends emails |
+| MailHog | `food-mailhog` | http://localhost:8025 (the test inbox for emails) |
 | Kafka | `food-kafka` | internal only (`kafka:9092`), no published port |
 
 The React apps call the gateway at `http://localhost:8090`. This address is set at build time with the `VITE_API_URL` build argument in `docker-compose.yml`, because the browser, not the container, makes the requests. Ports 5173 and 5174 are fixed because the backend and gateway only allow those two origins (CORS).
@@ -311,7 +316,8 @@ Some tests use Testcontainers, so Docker must be running.
 | `INTERNAL_API_KEY` | backend, order-service | Shared key for internal endpoints |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | order-service | Stripe payments |
 | `INVENTORY_BASE_URL` | order-service | Address of inventory-service (stock reservations) |
-| `KAFKA_BOOTSTRAP_SERVERS` | order-service | Where Kafka is (`kafka:9092` in Docker) |
+| `KAFKA_BOOTSTRAP_SERVERS` | order-service, notification-service | Where Kafka is (`kafka:9092` in Docker) |
+| `MAIL_HOST`, `MAIL_PORT` | notification-service | The SMTP server for emails (`mailhog`, `1025` in Docker) |
 | `NODE_BACKEND_URL` | gateway | Where the gateway forwards requests |
 | `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL` | gateway | Where the gateway sends `/api/order/**` and `/api/inventory/**` |
 
@@ -367,6 +373,28 @@ To watch the events (Windows Command Prompt; in Git Bash put `MSYS_NO_PATHCONV=1
 ```bash
 docker exec food-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic order-events --from-beginning --property print.key=true
 ```
+
+## ✉️ Notifications (email)
+
+`notification-service` listens to the `order-events` topic and emails the customer. It never calls order-service: everything it needs is inside the event.
+
+| Event | Email |
+|---|---|
+| `ORDER_PLACED` (cash on delivery) | "Order confirmed" |
+| `ORDER_PLACED` (Stripe) | none, the customer is still paying |
+| `ORDER_PAID` | "Payment received" |
+| `ORDER_PAYMENT_FAILED` | "Payment failed" (says the cart is still saved) |
+| `ORDER_STATUS_CHANGED` | "Your order is Out for delivery" / "Delivered" |
+
+**Nothing real is sent while developing.** In Docker the emails go to **MailHog**, a fake mail server with a web inbox. Open http://localhost:8025 to read them. To send real emails, point `MAIL_HOST` and `MAIL_PORT` (and, for a provider that needs it, the `spring.mail.*` login settings) at a real SMTP server.
+
+**What it guarantees**
+
+- **Each event sends at most one email.** Kafka may deliver a message twice, so every email is recorded with its unique `eventId` in the service's own database, and a repeated event is recognised and ignored.
+- **A failed email is not lost.** The record and the sending happen in one transaction. If the mail server is down, the record is rolled back and the message is retried after 1 s, 2 s, 4 s ... (at most 30 s apart, 8 times).
+- **A broken message cannot block the others.** A message that is not a valid event goes straight to the dead letter topic `order-events.DLT`, and so does one that still fails after the retries. The service carries on with the next event.
+- **A new service catches up.** It starts reading from the beginning of the topic, so events that arrived while it was down are not missed. Kafka remembers how far it has read, so a restart sends nothing twice.
+- **New event types do no harm.** Unknown event types and unknown fields are ignored.
 
 ---
 

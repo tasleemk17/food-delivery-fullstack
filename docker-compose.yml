@@ -1,4 +1,4 @@
-# Node backend, API gateway, order-service, inventory-service, their PostgreSQL databases and the two React apps.
+# Node backend, API gateway, order-service, inventory-service, notification-service, Kafka, MailHog, their PostgreSQL databases and the two React apps.
 # Start:  docker compose up -d --build
 # Stop:   docker compose down          (add -v to also delete the PostgreSQL data)
 #
@@ -127,6 +127,55 @@ services:
     mem_limit: 512m
     restart: unless-stopped
 
+  # Emails are not really delivered while developing: MailHog catches them in a test inbox.
+  # Open http://localhost:8025 to read them. (SMTP, port 1025, is only reachable inside Docker.)
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: food-mailhog
+    ports:
+      - "127.0.0.1:8025:8025"
+    mem_limit: 128m
+    restart: unless-stopped
+
+  postgres-notifications:
+    image: postgres:16-alpine
+    container_name: food-postgres-notifications
+    environment:
+      POSTGRES_DB: notifications
+      POSTGRES_USER: notifications
+      # Local development password. Set NOTIFICATIONS_DB_PASSWORD in a root .env file to change it.
+      POSTGRES_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications_local_pw}
+    volumes:
+      - notifications-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notifications -d notifications"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No ports: only notification-service talks to the database, over the Docker network
+    restart: unless-stopped
+
+  # Listens to the order events on Kafka and emails the customer. Has no public API and no published port.
+  notification-service:
+    build: ./notification-service
+    container_name: food-notification-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres-notifications:5432/notifications
+      DB_USER: notifications
+      DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications_local_pw}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MAIL_HOST: mailhog
+      MAIL_PORT: "1025"
+    depends_on:
+      postgres-notifications:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    mem_limit: 512m
+    restart: unless-stopped
+
   # Message broker for order events (KRaft mode: no ZooKeeper needed).
   # Single node, so every replication factor is 1. Not published to the laptop:
   # only the other containers use it, at kafka:9092.
@@ -190,4 +239,5 @@ services:
 volumes:
   orders-data:
   inventory-data:
+  notifications-data:
   kafka-data:

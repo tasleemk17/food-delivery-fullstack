@@ -1,0 +1,49 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/notifications}
+    username: ${DB_USER:notifications}
+    password: ${DB_PASSWORD:notifications}
+  jpa:
+    # Flyway creates the tables; Hibernate only checks that the entities match them
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      # One group: Kafka remembers how far this service has read. A new group starts from the
+      # beginning (earliest), so events that arrived while the service was down are not missed.
+      group-id: notification-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      # Only used to park messages that cannot be processed (the "dead letter" topic)
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+
+notifications:
+  topic: order-events
+  mail-from: "Tomato <orders@tomato.local>"
+  retry:
+    # A failed email is tried again after 1 s, 2 s, 4 s ... (at most 30 s apart), 8 times,
+    # then the message is parked on order-events.DLT so it never blocks the events behind it
+    initial-ms: 1000
+    max-ms: 30000
+    max-retries: 8
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
