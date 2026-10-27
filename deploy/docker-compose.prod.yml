@@ -1,0 +1,38 @@
+# Changes for running on a server instead of a laptop. Used together with the normal file:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+# (deploy/deploy.sh does this for you.)
+#
+# PUBLIC_HOST is the address people type in the browser: the server's IP address or its domain name.
+# It is needed in three places:
+#   - baked into the websites when they are built (the browser must know where the gateway is)
+#   - the CORS list: which websites may call the gateway and the backend
+#   - the Stripe return address after paying
+
+x-public-urls: &public-urls
+  FRONTEND_URL: http://${PUBLIC_HOST:?PUBLIC_HOST is not set (see deploy/README.md)}:5173
+  ADMIN_URL: http://${PUBLIC_HOST}:5174
+
+services:
+  backend:
+    # Stripe webhooks arrive through the gateway (/api/order/webhook), so the backend needs no public port
+    ports: !reset []
+    environment:
+      <<: *public-urls
+
+  order-service:
+    environment:
+      <<: *public-urls
+
+  gateway:
+    environment:
+      <<: *public-urls
+
+  smallapp:
+    build:
+      args:
+        VITE_API_URL: http://${PUBLIC_HOST}:8090
+
+  admin:
+    build:
+      args:
+        VITE_API_URL: http://${PUBLIC_HOST}:8090

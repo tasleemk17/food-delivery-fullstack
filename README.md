@@ -153,6 +153,7 @@ food-delivery-fullstack/
 │   ├── tests/
 │   └── Dockerfile
 │
+├── deploy/                  # AWS EC2 deployment: scripts, prod compose file, guide
 ├── e2e/                     # Playwright end-to-end tests (browser against the Docker stack)
 │
 ├── smallapp/
@@ -516,6 +517,14 @@ On Windows the tests use the Microsoft Edge that is already installed, so nothin
 - Each run signs up one new customer (`e2e.<number>@tomato.test`, a random password) and places one cash on delivery order. They stay in the database: the app has no way to delete them. Admins can recognise the orders by that address.
 - The tests are **not in the CI workflow**: they need the whole stack, including MongoDB Atlas, so they run on your machine (later, against a test environment).
 - The chat test accepts both answer styles (Claude or search-only), so it passes with or without `ANTHROPIC_API_KEY`.
+
+---
+
+## ☁️ Deploying to AWS
+
+The whole stack runs on one EC2 server with Docker Compose (MongoDB stays on Atlas). The folder `deploy/` has a server setup script, `deploy.sh` (update, start, health checks), a production compose file and a step by step guide, and the manual GitHub Actions workflow **Deploy** updates the server over SSH. It is meant for a demo with Stripe test keys: the server is started when needed and terminated afterwards, so it costs a few dollars, not a monthly bill.
+
+See **[deploy/README.md](deploy/README.md)** for the steps, the security group, the cost and how to stop paying.
 
 ---
 

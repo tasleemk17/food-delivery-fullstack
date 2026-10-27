@@ -1,0 +1,47 @@
+name: Deploy
+
+# Started by hand (Actions tab -> Deploy -> Run workflow), never automatically: a running server costs money,
+# and a deploy should be a decision. It logs in to the server over SSH and runs deploy/deploy.sh.
+on:
+  workflow_dispatch:
+
+# One deploy at a time, and a running one is never cancelled halfway
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to the server
+    runs-on: ubuntu-latest
+    # Secrets are stored under Settings -> Environments -> production
+    environment: production
+    steps:
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          [ -n "$SSH_KEY" ] && [ -n "$HOST" ] || { echo "Set the secrets EC2_HOST, EC2_USER and EC2_SSH_KEY first (see deploy/README.md)."; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Run deploy.sh on the server
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o ServerAliveInterval=30 "$SSH_USER@$HOST" 'cd ~/food-delivery && bash deploy/deploy.sh'
+
+      - name: Check the website from the outside
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 "http://$HOST:8090/api/food/list" > /dev/null
+          curl -fsS --retry 5 --retry-delay 5 "http://$HOST:5173/" > /dev/null
+          echo "Reachable from the internet: http://$HOST:5173"
