@@ -90,6 +90,10 @@ The project also includes a separate **Admin Panel** for managing food items and
 - MongoDB (Atlas) for users, foods and carts
 - PostgreSQL 16 for orders (order-service) and a separate PostgreSQL 16 for stock (inventory-service)
 
+### Messaging
+
+- Apache Kafka (KRaft mode) for order events, sent with the transactional outbox pattern
+
 ### Payment
 
 - Stripe
@@ -187,7 +191,7 @@ Add `stripe` to also start the Stripe webhook forwarder: `start-dev.bat stripe`.
 
 ## 🐳 Run Everything with Docker
 
-Docker Compose starts eight containers: the Node.js backend, the gateway, the order-service, the inventory-service, two PostgreSQL databases and the two React apps (built with Vite and served by nginx).
+Docker Compose starts nine containers: the Node.js backend, the gateway, the order-service, the inventory-service, Kafka, two PostgreSQL databases and the two React apps (built with Vite and served by nginx).
 
 | Service | Container | URL |
 |---|---|---|
@@ -199,6 +203,7 @@ Docker Compose starts eight containers: the Node.js backend, the gateway, the or
 | inventory-service | `food-inventory-service` | internal only, reached through the gateway at `/api/inventory/**` |
 | PostgreSQL (orders) | `food-postgres` | internal only, no published port |
 | PostgreSQL (stock) | `food-postgres-inventory` | internal only, no published port |
+| Kafka | `food-kafka` | internal only (`kafka:9092`), no published port |
 
 The React apps call the gateway at `http://localhost:8090`. This address is set at build time with the `VITE_API_URL` build argument in `docker-compose.yml`, because the browser, not the container, makes the requests. Ports 5173 and 5174 are fixed because the backend and gateway only allow those two origins (CORS).
 
@@ -306,6 +311,7 @@ Some tests use Testcontainers, so Docker must be running.
 | `INTERNAL_API_KEY` | backend, order-service | Shared key for internal endpoints |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | order-service | Stripe payments |
 | `INVENTORY_BASE_URL` | order-service | Address of inventory-service (stock reservations) |
+| `KAFKA_BOOTSTRAP_SERVERS` | order-service | Where Kafka is (`kafka:9092` in Docker) |
 | `NODE_BACKEND_URL` | gateway | Where the gateway forwards requests |
 | `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL` | gateway | Where the gateway sends `/api/order/**` and `/api/inventory/**` |
 
@@ -333,6 +339,34 @@ Some tests use Testcontainers, so Docker must be running.
 4. **If inventory-service is down**, placing an order fails with `503` and nothing is saved, so stock can never be oversold.
 
 Commit and release only change the reservation's label, so a failure there is logged and never fails an order.
+
+---
+
+## 📨 Order Events (Kafka)
+
+When an order changes, order-service publishes an event to the Kafka topic `order-events`, so other services can react without order-service calling them.
+
+| Event | When |
+|---|---|
+| `ORDER_PLACED` | An order is saved (cash on delivery is confirmed at once; a Stripe order waits for payment) |
+| `ORDER_PAID` | Stripe confirmed the payment |
+| `ORDER_PAYMENT_FAILED` | The payment failed or the 35 minute Stripe session expired |
+| `ORDER_STATUS_CHANGED` | An admin moved the order along (for example "Out for delivery") |
+
+Each message is JSON with a unique `eventId` and everything a listener needs (order id, user, email, items, amount, status). It leaves out the street address and phone number. The Kafka key is the order id, so the events of one order always arrive in the order they happened, and a header `event-type` names the event.
+
+**How it stays reliable (the outbox pattern)**
+
+- The event is written to the `outbox_events` table in the **same database transaction** as the order change. Either both are saved or neither is, so an event is never missing for a change that happened, and never sent for one that was rolled back.
+- A publisher sends the saved events to Kafka about once a second and marks each one sent only after Kafka confirms it (`acks=all`, idempotent producer). If it crashes in between, the event is sent again, so listeners must handle the same `eventId` twice.
+- If Kafka is down, **orders keep working**. The events wait in the table, oldest first, and go out by themselves when Kafka is back.
+- Only a real change makes an event: repeating a payment notification or choosing the status an order already has sends nothing.
+
+To watch the events (Windows Command Prompt; in Git Bash put `MSYS_NO_PATHCONV=1` in front):
+
+```bash
+docker exec food-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic order-events --from-beginning --property print.key=true
+```
 
 ---
 

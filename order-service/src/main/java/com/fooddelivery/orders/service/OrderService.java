@@ -49,15 +49,18 @@ public class OrderService {
     private final PricingService pricing;
     private final PaymentGateway payments;
     private final InventoryPort inventory;
+    private final OrderTransitions transitions;
     private final Clock clock;
 
     public OrderService(OrderRepository orders, CartPort cart, PricingService pricing,
-                        PaymentGateway payments, InventoryPort inventory, Clock clock) {
+                        PaymentGateway payments, InventoryPort inventory, OrderTransitions transitions,
+                        Clock clock) {
         this.orders = orders;
         this.cart = cart;
         this.pricing = pricing;
         this.payments = payments;
         this.inventory = inventory;
+        this.transitions = transitions;
         this.clock = clock;
     }
 
@@ -85,7 +88,7 @@ public class OrderService {
         try {
             session = payments.createCheckoutSession(order.getId(), lines, PricingService.DELIVERY_CHARGE);
         } catch (RuntimeException e) {
-            orders.markFailedIfUnpaid(order.getId());
+            transitions.markFailed(order.getId());
             releaseStockQuietly(order.getId());
             throw e;
         }
@@ -125,7 +128,7 @@ public class OrderService {
                     .filter(o -> paysFor(session, o))
                     .ifPresent(this::markPaid);
         } else if ("checkout.session.expired".equals(event.type())) {
-            if (orders.markFailedIfUnpaid(orderId) == 1) {
+            if (transitions.markFailed(orderId)) {
                 releaseStockQuietly(orderId); // nobody will pay: give the stock back
             }
         }
@@ -137,7 +140,7 @@ public class OrderService {
         if (status == null || !status.isAdminSettable()) {
             throw new OrderException(HttpStatus.BAD_REQUEST, "Invalid status");
         }
-        if (orders.updateStatusIfPayable(orderId, status) == 0) {
+        if (!transitions.changeStatus(orderId, status)) {
             throw new OrderException(HttpStatus.CONFLICT, "Order not found or not paid yet");
         }
     }
@@ -176,7 +179,7 @@ public class OrderService {
 
     /** Only the call that actually flips paid=false to true confirms the stock and clears the cart. */
     private void markPaid(OrderEntity order) {
-        if (orders.markPaidIfUnpaid(order.getId()) == 1) {
+        if (transitions.markPaid(order.getId())) {
             commitStockQuietly(order.getId());
             clearCartQuietly(order.getUserId());
         }
@@ -208,10 +211,10 @@ public class OrderService {
                 : "Only " + e.available() + " left of " + name + ". Please reduce the quantity and try again.";
     }
 
-    /** Saves the order; if saving fails the stock that was just held is given back. */
+    /** Saves the order (and its event); if saving fails the stock that was just held is given back. */
     private void saveOrReleaseStock(OrderEntity order) {
         try {
-            orders.save(order);
+            transitions.place(order);
         } catch (RuntimeException e) {
             releaseStockQuietly(order.getId());
             throw e;
