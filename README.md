@@ -457,6 +457,11 @@ docker compose up -d --build ai-service
 
 **Cost control:** a message is limited to 500 characters, only the last 6 turns are sent, and each user may send 20 messages per 10 minutes (`429` after that).
 
+### In the customer app
+
+- **Chat widget:** the "Ask us" button at the bottom right of every page opens the assistant. A visitor who is not logged in is asked to sign in first. The last answers are sent as history, so follow-up questions work, and each answer shows which dishes or help pages it was based on. When Claude is switched off, the answer is marked as a search result.
+- **Customers also ordered:** the cart page shows up to four dishes that other customers ordered together with the dishes in the cart, each with an Add button. Nothing is shown when there is no history yet or the service is down.
+
 ### Configuration
 
 | Variable | Default | Meaning |
