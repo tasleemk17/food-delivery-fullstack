@@ -153,6 +153,8 @@ food-delivery-fullstack/
 │   ├── tests/
 │   └── Dockerfile
 │
+├── e2e/                     # Playwright end-to-end tests (browser against the Docker stack)
+│
 ├── smallapp/
 │   ├── public/
 │   ├── src/
@@ -484,6 +486,36 @@ python -m venv .venv
 ```
 
 The tests start a real PostgreSQL with Testcontainers (Docker must be running). Claude is never called: a stand-in is used, so no API key and no cost.
+
+---
+
+## 🎭 End-to-End Tests
+
+The unit and integration tests of each service run in CI. The `e2e` folder adds tests that drive a **real browser** against the whole running stack, so they prove that the services work together: website, gateway, Node backend, order-service, Kafka, notification-service, ai-service and MailHog.
+
+| Test | What it proves |
+|---|---|
+| Menu loads | the website reads the menu through the gateway |
+| Chat asks for a login | a visitor who is not logged in cannot chat |
+| Sign up, order (COD), My Orders | the full customer flow, and that the confirmation email reached MailHog (order -> Kafka -> notification-service) |
+| Cart suggestions | "Customers also ordered" appears and its Add button works |
+| Assistant answer | a logged in customer gets an answer with sources |
+| Gateway security (5 tests) | public routes open, private routes need a login, a forged token is rejected, admin and `/internal` routes are closed |
+
+```bash
+docker compose up -d --build        # the stack must be running
+cd e2e
+npm install
+npx playwright install chromium     # once; or use a browser you already have (below)
+npm test
+```
+
+To use Edge or Chrome that is already installed instead of downloading Chromium: `E2E_BROWSER_CHANNEL=msedge npm test` (Windows PowerShell: `$env:E2E_BROWSER_CHANNEL="msedge"; npm test`). `npm run report` opens the HTML report; a failed test keeps a screenshot and a trace.
+
+**Good to know**
+- Each run signs up one new customer (`e2e.<number>@tomato.test`, a random password) and places one cash on delivery order. They stay in the database: the app has no way to delete them. Admins can recognise the orders by that address.
+- The tests are **not in the CI workflow**: they need the whole stack, including MongoDB Atlas, so they run on your machine (later, against a test environment).
+- The chat test accepts both answer styles (Claude or search-only), so it passes with or without `ANTHROPIC_API_KEY`.
 
 ---
 
