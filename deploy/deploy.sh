@@ -49,8 +49,14 @@ for i in $(seq 1 60); do
 done
 
 echo "==> Checking the stack"
+# The Java services need up to a minute to start after the containers are "Up", so each check is
+# tried again for about 2 minutes before it counts as failed.
 check() {
-  if curl -fsS -m 10 "$2" >/dev/null 2>&1; then echo "    ok    $1"; else echo "    FAIL  $1  ($2)"; FAILED=1; fi
+  for _ in $(seq 1 24); do
+    if curl -fsS -m 10 "$2" >/dev/null 2>&1; then echo "    ok    $1"; return; fi
+    sleep 5
+  done
+  echo "    FAIL  $1  ($2)"; FAILED=1
 }
 FAILED=0
 check "gateway health"      http://localhost:8090/actuator/health
