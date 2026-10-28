@@ -526,6 +526,26 @@ The whole stack runs on one EC2 server with Docker Compose (MongoDB stays on Atl
 
 See **[deploy/README.md](deploy/README.md)** for the steps, the security group, the cost and how to stop paying.
 
+### Running on AWS
+
+The same stack, deployed on an EC2 server (Ubuntu 24.04, Docker Compose, 14 containers). The address bar shows the server's public IP address. The server is only started for demos, so the link is not always online.
+
+**Customer app: menu**
+
+![Tomato menu served from the EC2 server](docs/screenshots/aws-menu.webp)
+
+**Customer app: an order placed on the server** (cash on delivery, saved by the order-service in its PostgreSQL database)
+
+![My Orders page on the EC2 server](docs/screenshots/aws-my-orders.png)
+
+**Menu assistant** (no `ANTHROPIC_API_KEY` on this server, so it answers from search and says so at the bottom)
+
+![Chat assistant on the EC2 server](docs/screenshots/aws-chatbot.png)
+
+**Admin panel** (reachable only from the owner's IP address; customer details are hidden in this screenshot)
+
+![Admin orders page on the EC2 server](docs/screenshots/aws-admin-orders.png)
+
 ---
 
 ## 🔧 Backend Setup
