@@ -530,6 +530,10 @@ See **[deploy/README.md](deploy/README.md)** for the steps, the security group, 
 
 The same stack, deployed on an EC2 server (Ubuntu 24.04, Docker Compose, 14 containers). The address bar shows the server's public IP address. The server is only started for demos, so the link is not always online.
 
+**The EC2 instance** (region N. Virginia, type `m7i-flex.large` with 2 vCPU and 8 GiB of memory, state Running; the account name and number are covered)
+
+![AWS EC2 console showing the running instance](docs/screenshots/aws-ec2-console.png)
+
 **Customer app: menu**
 
 ![Tomato menu served from the EC2 server](docs/screenshots/aws-menu.webp)
