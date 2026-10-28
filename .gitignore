@@ -5,3 +5,5 @@ dist/
 build/
 .vscode/
 backend/uploads/*
+# Portfolio pictures are made with e2e/demo/portfolio-shots.mjs and kept on disk, not in Git
+docs/portfolio/*.png
