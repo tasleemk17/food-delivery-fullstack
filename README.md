@@ -546,6 +546,10 @@ The same stack, deployed on an EC2 server (Ubuntu 24.04, Docker Compose, 14 cont
 
 ![Admin orders page on the EC2 server](docs/screenshots/aws-admin-orders.png)
 
+**Admin panel: stock page** (the same page, served from the EC2 server)
+
+![Admin stock page on the EC2 server](docs/screenshots/aws-admin-stock.png)
+
 ---
 
 ## 🔧 Backend Setup
@@ -804,6 +808,10 @@ Stripe payments are verified on the backend before marking an order as paid.
 **Food list**
 
 ![Admin food list](docs/screenshots/admin-food-list.jpg)
+
+**Stock** (the admin types how many units of a dish are available and presses Save. A dish that is not tracked is always available, and a dish at 0 shows "Out of stock" on the menu. Units are held while an order is placed and returned if the payment fails.)
+
+![Admin stock page](docs/screenshots/admin-stock.png)
 
 ---
 
