@@ -1,0 +1,20 @@
+# Used only by deploy/docker-compose.https.yml. The three names come from the environment.
+# Caddy asks Let's Encrypt for a certificate for each name the first time it is visited (ports 80 and 443
+# must be open, and the names must already point at this server), then renews it by itself.
+
+{$SHOP_DOMAIN} {
+	encode gzip
+	reverse_proxy smallapp:8080
+}
+
+{$ADMIN_DOMAIN} {
+	encode gzip
+	reverse_proxy admin:8080
+}
+
+{$API_DOMAIN} {
+	# flush_interval -1 sends streamed answers (the chat) straight through instead of holding them back
+	reverse_proxy gateway:8080 {
+		flush_interval -1
+	}
+}

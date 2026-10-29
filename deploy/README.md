@@ -12,7 +12,7 @@ The whole project (14 containers) runs on **one EC2 server** with Docker Compose
 
 What this setup is, and is not:
 
-- **HTTP only, no HTTPS.** Fine for a demo with Stripe *test* keys. Real payments need HTTPS and a domain (a later step).
+- **HTTP only, no HTTPS.** Fine for a demo with Stripe *test* keys. Real payments need HTTPS and a domain (a later step). An optional add-on gives a fixed IP and free HTTPS names: see [HTTPS.md](HTTPS.md).
 - **One server, one Kafka node.** It shows the architecture; it is not highly available.
 - **Emails go to MailHog**, a test inbox, not to real mailboxes. Read them over an SSH tunnel (step 9).
 
