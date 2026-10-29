@@ -1,0 +1,69 @@
+# OPTIONAL: serve the project over HTTPS on your own names (for example free DuckDNS names).
+# It is a third file that goes on top of the two normal ones. Nothing in them is changed, so the plain HTTP
+# setup (deploy/deploy.sh) keeps working exactly as before.
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml -f deploy/docker-compose.https.yml up -d --build
+# (deploy/deploy-https.sh does this for you. Setup steps are in deploy/HTTPS.md.)
+#
+# Three names, all pointing at the same server:
+#   SHOP_DOMAIN   the customer website
+#   ADMIN_DOMAIN  the admin panel
+#   API_DOMAIN    the gateway (the websites call it from the browser)
+# Caddy in front of them gets and renews the certificates by itself. Only ports 80 and 443 are public;
+# the old :5173, :5174 and :8090 stay closed in this mode.
+
+x-https-urls: &https-urls
+  FRONTEND_URL: https://${SHOP_DOMAIN:?SHOP_DOMAIN is not set (see deploy/HTTPS.md)}
+  ADMIN_URL: https://${ADMIN_DOMAIN:?ADMIN_DOMAIN is not set (see deploy/HTTPS.md)}
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SHOP_DOMAIN: ${SHOP_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is not set (see deploy/HTTPS.md)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # the certificates: kept, so a restart never asks for new ones
+      - caddy-config:/config
+    depends_on:
+      - smallapp
+      - admin
+      - gateway
+
+  # Who the backend, the order service and the gateway accept as "the website" (CORS) and where Stripe
+  # sends the customer back after paying
+  backend:
+    environment:
+      <<: *https-urls
+
+  order-service:
+    environment:
+      <<: *https-urls
+
+  gateway:
+    ports: !reset []
+    environment:
+      <<: *https-urls
+
+  # The websites must call the API over HTTPS too, or the browser blocks it as mixed content
+  smallapp:
+    ports: !reset []
+    build:
+      args:
+        VITE_API_URL: https://${API_DOMAIN}
+
+  admin:
+    ports: !reset []
+    build:
+      args:
+        VITE_API_URL: https://${API_DOMAIN}
+
+volumes:
+  caddy-data:
+  caddy-config:
